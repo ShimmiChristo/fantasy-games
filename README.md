@@ -1,36 +1,142 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js Authentication App
 
-## Getting Started
+A production-ready Next.js application with manual email/password authentication, Prisma ORM, SQLite database, and cookie-based sessions.
 
-First, run the development server:
+## Features
+
+- ✅ Manual authentication (email + password)
+- ✅ Prisma ORM with SQLite
+- ✅ Cookie-based sessions with JWT
+- ✅ Password hashing with bcrypt
+- ✅ Protected routes
+- ✅ CSS Modules styling (no frameworks)
+- ✅ TypeScript
+- ✅ Secure, production-ready code
+
+## Prerequisites
+
+- Node.js 20.9.0 or higher
+- npm or yarn
+
+## Setup
+
+1. **Install dependencies:**
+
+```bash
+npm install
+```
+
+2. **Set up environment variables:**
+
+Copy `.env.example` to `.env` and update the `SESSION_SECRET` with a secure random string (at least 32 characters):
+
+```bash
+cp .env.example .env
+```
+
+3. **Initialize the database:**
+
+```bash
+npm run db:push
+```
+
+This will create the SQLite database and apply the schema.
+
+4. **Generate Prisma Client:**
+
+```bash
+npm run db:generate
+```
+
+5. **Start the development server:**
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+├── prisma/
+│   └── schema.prisma          # Database schema
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── auth/          # Authentication API routes
+│   │   ├── dashboard/         # Protected dashboard page
+│   │   ├── login/             # Login page
+│   │   ├── register/          # Registration page
+│   │   └── layout.tsx         # Root layout
+│   ├── components/            # React components
+│   └── lib/
+│       ├── auth.ts            # Authentication utilities
+│       ├── auth-helpers.ts    # Route protection helpers
+│       └── prisma.ts          # Prisma client instance
+└── .env                       # Environment variables
+```
 
-## Learn More
+## API Routes
 
-To learn more about Next.js, take a look at the following resources:
+### POST `/api/auth/register`
+Register a new user.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### POST `/api/auth/login`
+Login with email and password.
 
-## Deploy on Vercel
+**Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### POST `/api/auth/logout`
+Logout the current user.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### GET `/api/auth/me`
+Get the current authenticated user.
+
+## Security Features
+
+- Passwords are hashed using bcrypt with 12 rounds
+- Sessions are stored in the database and validated on each request
+- JWT tokens are signed with a secret key
+- HTTP-only cookies prevent XSS attacks
+- Secure cookies in production (HTTPS required)
+- Password minimum length validation (8 characters)
+- Email normalization (lowercase, trimmed)
+
+## Database Management
+
+- **View database:** `npm run db:studio`
+- **Create migration:** `npm run db:migrate`
+- **Push schema changes:** `npm run db:push`
+- **Generate Prisma Client:** `npm run db:generate`
+
+## Production Deployment
+
+1. Update `SESSION_SECRET` in `.env` with a strong random string
+2. Set `NODE_ENV=production` in your environment
+3. Run `npm run build` to build the application
+4. Run `npm start` to start the production server
+
+**Important:** Make sure to:
+- Use a strong `SESSION_SECRET` (at least 32 characters)
+- Use HTTPS in production
+- Keep your `.env` file secure and never commit it to version control
+- Consider using a more robust database (PostgreSQL, MySQL) for production
+
+## License
+
+MIT
