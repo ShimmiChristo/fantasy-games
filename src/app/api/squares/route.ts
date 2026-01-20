@@ -113,7 +113,7 @@ export async function GET(req: Request) {
   const boardDelegate = getBoardDelegate(prisma);
   const board = await boardDelegate.findUnique({
     where: { id: boardId },
-    select: { id: true, name: true, isEditable: true, editableUntil: true },
+    select: { id: true, name: true, isEditable: true, editableUntil: true, maxSquaresPerEmail: true },
   } as unknown);
 
   // If viewer is a global admin or board admin, include member + invite lists.
@@ -172,6 +172,27 @@ export async function POST(req: Request) {
   }
 
   await ensureGridExists(boardId);
+
+  // Enforce per-board limit (if any) for how many squares the current user's email can claim.
+  // Global admins are exempt.
+  if (user.role !== 'ADMIN') {
+    const boardDelegate = getBoardDelegate(prisma);
+    const board = (await boardDelegate.findUnique({
+      where: { id: boardId },
+      select: { maxSquaresPerEmail: true },
+    } as unknown)) as unknown as { maxSquaresPerEmail: number | null } | null;
+
+    const limit = board?.maxSquaresPerEmail ?? null;
+    if (limit && limit > 0) {
+      const claimedCount = await prisma.square.count({ where: { boardId, userId: user.id } });
+      if (claimedCount >= limit) {
+        return NextResponse.json(
+          { error: `Square limit reached. This board allows up to ${limit} square(s) per email.` },
+          { status: 409 },
+        );
+      }
+    }
+  }
 
   const squareDelegate: SquareDelegate = getSquareDelegate(prisma);
 

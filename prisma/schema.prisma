@@ -60,6 +60,10 @@ model Board {
   /// If set and in the past, the board is no longer editable.
   editableUntil   DateTime?
 
+  /// Optional limit for how many squares one email/user can claim on this board.
+  /// Null means unlimited.
+  maxSquaresPerEmail Int?
+
   createdBy User          @relation("BoardsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
   members   BoardMember[]
   invites   BoardInvite[]

@@ -64,6 +64,7 @@ export default async function DashboardPage() {
           createdByUserId: true,
           isEditable: true,
           editableUntil: true,
+          maxSquaresPerEmail: true,
         },
       },
     },
@@ -76,6 +77,7 @@ export default async function DashboardPage() {
       createdByUserId: string;
       isEditable: boolean;
       editableUntil: Date | null;
+      maxSquaresPerEmail: number | null;
     };
   }[];
 

@@ -42,6 +42,7 @@ type Membership = {
     createdByUserId: string;
     isEditable: boolean;
     editableUntil: string | Date | null;
+    maxSquaresPerEmail?: number | null;
   };
 };
 
@@ -56,6 +57,20 @@ export default function DashboardBoardsClient({
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errorById, setErrorById] = useState<Record<string, string | null>>({});
+  const [limitById, setLimitById] = useState<Record<string, string>>({});
+
+  const initialLimitById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const item of memberships) {
+      const v = item.board.maxSquaresPerEmail;
+      m[item.board.id] = typeof v === 'number' && Number.isFinite(v) ? String(v) : '';
+    }
+    return m;
+  }, [memberships]);
+
+  useEffect(() => {
+    setLimitById(initialLimitById);
+  }, [initialLimitById]);
 
   // Re-render countdowns every 1s.
   const [now, setNow] = useState(() => Date.now());
@@ -63,6 +78,66 @@ export default function DashboardBoardsClient({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  async function updateBoard(
+    boardId: string,
+    patch: { name?: string; isEditable?: boolean; editableUntil?: string | null; maxSquaresPerEmail?: number | null },
+  ) {
+    setBusyId(boardId);
+    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+
+    try {
+      const res = await fetch('/api/admin/boards', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boardId, ...patch }),
+        credentials: 'same-origin',
+        redirect: 'manual',
+      });
+
+      if (res.status === 307 || res.status === 308) {
+        setErrorById((prev) => ({
+          ...prev,
+          [boardId]: 'Update was redirected (auth/session issue). Please refresh and sign in again.',
+        }));
+        return;
+      }
+
+      const data = (await res.json().catch(() => null)) as
+        | {
+            board?: {
+              id: string;
+              name: string;
+              isEditable: boolean;
+              editableUntil: string | Date | null;
+              maxSquaresPerEmail?: number | null;
+            };
+            error?: string;
+          }
+        | null;
+
+      if (!res.ok) {
+        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || `Failed to update board (${res.status})` }));
+        return;
+      }
+
+      const b = data?.board;
+      if (b) {
+        setNameById((prev) => ({ ...prev, [boardId]: b.name }));
+        setIsEditableById((prev) => ({ ...prev, [boardId]: !!b.isEditable }));
+        const dt = parseDate(b.editableUntil);
+        setLockAtById((prev) => ({ ...prev, [boardId]: dt ? toDateTimeLocalValue(dt) : '' }));
+
+        const v = b.maxSquaresPerEmail;
+        setLimitById((prev) => ({
+          ...prev,
+          [boardId]: typeof v === 'number' && Number.isFinite(v) ? String(v) : '',
+        }));
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const initialNameById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -132,48 +207,32 @@ export default function DashboardBoardsClient({
     return map;
   }, [memberships, now, isEditableById, lockAtById]);
 
-  async function updateBoard(boardId: string, patch: { name?: string; isEditable?: boolean; editableUntil?: string | null }) {
-    setBusyId(boardId);
-    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+  async function updateLimit(boardId: string) {
+    const canManageBoard =
+      memberships.find((m) => m.board.id === boardId)?.role === 'OWNER' ||
+      memberships.find((m) => m.board.id === boardId)?.role === 'ADMIN' ||
+      currentUserRole === 'ADMIN';
 
-    try {
-      const res = await fetch('/api/admin/boards', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boardId, ...patch }),
-        credentials: 'same-origin',
-        redirect: 'manual',
-      });
-
-      // If middleware/auth redirects (common when cookies aren't sent), surface it clearly.
-      if (res.status === 307 || res.status === 308) {
-        setErrorById((prev) => ({
-          ...prev,
-          [boardId]: 'Update was redirected (auth/session issue). Please refresh and sign in again.',
-        }));
-        return;
-      }
-
-      const data = (await res.json().catch(() => null)) as
-        | { board?: { id: string; name: string; isEditable: boolean; editableUntil: string | Date | null }; error?: string }
-        | null;
-
-      if (!res.ok) {
-        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || `Failed to update board (${res.status})` }));
-        return;
-      }
-
-      // Update UI immediately from the canonical server response.
-      const b = data?.board;
-      if (b) {
-        setNameById((prev) => ({ ...prev, [boardId]: b.name }));
-        setIsEditableById((prev) => ({ ...prev, [boardId]: !!b.isEditable }));
-        const dt = parseDate(b.editableUntil);
-        setLockAtById((prev) => ({ ...prev, [boardId]: dt ? toDateTimeLocalValue(dt) : '' }));
-      }
-    } finally {
-      setBusyId(null);
+    if (!canManageBoard) {
+      setErrorById((prev) => ({ ...prev, [boardId]: 'Not authorized to change square limit' }));
+      return;
     }
+
+    const raw = (limitById[boardId] ?? '').trim();
+    const num = raw === '' ? null : Number(raw);
+
+    if (raw !== '') {
+      if (!Number.isFinite(num) || !Number.isInteger(num)) {
+        setErrorById((prev) => ({ ...prev, [boardId]: 'Limit must be an integer' }));
+        return;
+      }
+      if (num === null || num < 1 || num > 100) {
+        setErrorById((prev) => ({ ...prev, [boardId]: 'Limit must be between 1 and 100' }));
+        return;
+      }
+    }
+
+    await updateBoard(boardId, { maxSquaresPerEmail: num });
   }
 
   async function deleteBoard(boardId: string) {
@@ -282,6 +341,39 @@ export default function DashboardBoardsClient({
 
             {canManageBoard ? (
               <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, opacity: 0.8 }}>Max squares / email</span>
+                  <input
+                    value={limitById[m.board.id] ?? ''}
+                    onChange={(e) => setLimitById((prev) => ({ ...prev, [m.board.id]: e.target.value }))}
+                    placeholder="(unlimited)"
+                    inputMode="numeric"
+                    style={{ width: 130 }}
+                    disabled={!canManageBoard || busyId === m.board.id}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void updateLimit(m.board.id)}
+                  disabled={!canManageBoard || busyId === m.board.id}
+                  title="Set per-user square limit for this board"
+                >
+                  Save limit
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLimitById((prev) => ({ ...prev, [m.board.id]: '' }));
+                    void updateBoard(m.board.id, { maxSquaresPerEmail: null });
+                  }}
+                  disabled={!canManageBoard || busyId === m.board.id}
+                  title="Clear limit (set unlimited)"
+                >
+                  Clear limit
+                </button>
+
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 12, opacity: 0.8 }}>Name</span>
                   <input

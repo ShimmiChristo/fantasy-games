@@ -35,8 +35,28 @@ export async function GET() {
   const memberships = (await boardMemberDelegate.findMany({
     where: { userId: user.id },
     orderBy: [{ board: { createdAt: 'desc' } }, { createdAt: 'desc' }],
-    select: { board: { select: { id: true, name: true, createdAt: true, isEditable: true, editableUntil: true } } },
-  } as unknown)) as unknown as { board: { id: string; name: string; createdAt: Date; isEditable: boolean; editableUntil: Date | null } }[];
+    select: {
+      board: {
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          isEditable: true,
+          editableUntil: true,
+          maxSquaresPerEmail: true,
+        },
+      },
+    },
+  } as unknown)) as unknown as {
+    board: {
+      id: string;
+      name: string;
+      createdAt: Date;
+      isEditable: boolean;
+      editableUntil: Date | null;
+      maxSquaresPerEmail: number | null;
+    };
+  }[];
 
   const boards = memberships.map((m) => m.board);
 
@@ -83,11 +103,12 @@ export async function PUT(req: Request) {
   const hasName = typeof body?.name === 'string';
   const hasIsEditable = typeof body?.isEditable === 'boolean';
   const hasEditableUntil = body?.editableUntil !== undefined; // allow explicit null
+  const hasMaxSquaresPerEmail = body?.maxSquaresPerEmail !== undefined; // allow explicit null
 
   if (!boardId) return NextResponse.json({ error: 'boardId is required' }, { status: 400 });
-  if (!hasName && !hasIsEditable && !hasEditableUntil) {
+  if (!hasName && !hasIsEditable && !hasEditableUntil && !hasMaxSquaresPerEmail) {
     return NextResponse.json(
-      { error: 'Provide at least one of: name, isEditable, editableUntil' },
+      { error: 'Provide at least one of: name, isEditable, editableUntil, maxSquaresPerEmail' },
       { status: 400 },
     );
   }
@@ -132,15 +153,37 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: 'editableUntil must be an ISO date string or null' }, { status: 400 });
   }
 
+  const rawMax = body?.maxSquaresPerEmail;
+  const maxSquaresPerEmailNum = rawMax === null || rawMax === undefined ? null : Number(rawMax);
+  if (rawMax !== null && rawMax !== undefined) {
+    if (!Number.isFinite(maxSquaresPerEmailNum) || !Number.isInteger(maxSquaresPerEmailNum)) {
+      return NextResponse.json({ error: 'maxSquaresPerEmail must be an integer or null' }, { status: 400 });
+    }
+
+    // At this point it's a finite integer number.
+    if (maxSquaresPerEmailNum === null || maxSquaresPerEmailNum < 1 || maxSquaresPerEmailNum > 100) {
+      return NextResponse.json({ error: 'maxSquaresPerEmail must be between 1 and 100' }, { status: 400 });
+    }
+  }
+
   const data: Record<string, unknown> = {};
   if (hasName) data.name = name;
   if (hasIsEditable) data.isEditable = body.isEditable;
   if (hasEditableUntil) data.editableUntil = editableUntil;
+  if (hasMaxSquaresPerEmail) data.maxSquaresPerEmail = maxSquaresPerEmailNum;
 
   const board = await boardDelegate.update({
     where: { id: boardId },
     data,
-    select: { id: true, name: true, createdAt: true, updatedAt: true, isEditable: true, editableUntil: true },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      updatedAt: true,
+      isEditable: true,
+      editableUntil: true,
+      maxSquaresPerEmail: true,
+    },
   });
 
   return NextResponse.json({ board }, { status: 200 });

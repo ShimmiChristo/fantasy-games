@@ -26,6 +26,7 @@ type ApiBoard = {
   name: string;
   isEditable?: boolean;
   editableUntil?: string | Date | null;
+  maxSquaresPerEmail?: number | null;
 } | null;
 
 type ApiBoardMember = {
@@ -473,6 +474,21 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                   }
                 >
                   {lockLabel}
+                </span>
+              ) : null}
+              {board?.maxSquaresPerEmail ? (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 12,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: 'rgba(59,130,246,0.12)',
+                    color: 'rgb(30,64,175)',
+                  }}
+                  title="Max squares allowed per email on this board"
+                >
+                  Limit: {board.maxSquaresPerEmail}/email
                 </span>
               ) : null}
             </div>
