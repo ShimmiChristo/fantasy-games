@@ -51,6 +51,14 @@ export default async function JoinPage({
       redirect(`/join?token=${encodeURIComponent(inviteToken)}&error=1&message=${encodeURIComponent(msg)}`);
     }
 
+    const data = await res.json().catch(() => null);
+    const boardId = typeof data?.boardId === 'string' ? data.boardId : '';
+
+    if (boardId) {
+      redirect(`/squares?boardId=${encodeURIComponent(boardId)}`);
+    }
+
+    // Fallback
     redirect('/squares');
   }
 
