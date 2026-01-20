@@ -2,14 +2,11 @@ import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { prisma } from './prisma';
 import { cookies } from 'next/headers';
-import { createHmac, timingSafeEqual } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import type { $Enums } from '@prisma/client';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || 'default-secret-change-in-production';
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
-const COOKIE_NAME = 'session';
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days in seconds
 
 /**
  * Validate email format
@@ -137,116 +134,6 @@ export async function cleanupExpiredSessions(): Promise<number> {
   return result.count;
 }
 
-/**
- * Sign a value using HMAC-SHA256
- */
-function signValue(value: string): string {
-  const hmac = createHmac('sha256', SESSION_SECRET);
-  hmac.update(value);
-  return hmac.digest('hex');
-}
-
-/**
- * Verify a signed value
- */
-function verifySignedValue(value: string, signature: string): boolean {
-  const expectedSignature = signValue(value);
-  if (expectedSignature.length !== signature.length) {
-    return false;
-  }
-  return timingSafeEqual(
-    Buffer.from(expectedSignature),
-    Buffer.from(signature)
-  );
-}
-
-/**
- * Create a signed session cookie for a user
- * Uses crypto module to sign the cookie value
- */
-export async function createSessionCookie(userId: string): Promise<void> {
-  const cookieStore = await cookies();
-  
-  // Create the cookie value with timestamp
-  const timestamp = Date.now();
-  const value = `${userId}:${timestamp}`;
-  
-  // Sign the value
-  const signature = signValue(value);
-  const signedValue = `${value}.${signature}`;
-  
-  // Set the cookie
-  cookieStore.set(COOKIE_NAME, signedValue, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: COOKIE_MAX_AGE,
-    path: '/',
-  });
-}
-
-/**
- * Get user from the signed session cookie
- * Verifies the cookie signature using crypto module
- */
-export async function getUserFromCookie() {
-  const cookieStore = await cookies();
-  const cookie = cookieStore.get(COOKIE_NAME);
-  
-  if (!cookie?.value) {
-    return null;
-  }
-  
-  try {
-    // Split value and signature
-    const lastDotIndex = cookie.value.lastIndexOf('.');
-    if (lastDotIndex === -1) {
-      return null;
-    }
-    
-    const value = cookie.value.substring(0, lastDotIndex);
-    const signature = cookie.value.substring(lastDotIndex + 1);
-    
-    // Verify signature
-    if (!verifySignedValue(value, signature)) {
-      return null;
-    }
-    
-    // Extract userId from value (format: userId:timestamp)
-    const [userId, timestamp] = value.split(':');
-    if (!userId || !timestamp) {
-      return null;
-    }
-    
-    // Check if cookie has expired (7 days)
-    const cookieAge = Date.now() - parseInt(timestamp, 10);
-    if (cookieAge > SESSION_DURATION) {
-      return null;
-    }
-    
-    const select = {
-      id: true,
-      email: true,
-      role: true,
-      createdAt: true,
-    } satisfies Prisma.UserSelect;
-
-    // Fetch user from database
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select,
-    });
-    
-    return user as (typeof user & { role: $Enums.Role }) | null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Clear the session cookie
- */
-export async function clearSessionCookie(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
-}
+// NOTE: The codebase uses JWT-based sessions stored in the DB (createSession/verifySession)
+// and sent to the browser in the httpOnly `session` cookie. Any previous signed-cookie
+// helpers have been removed to prevent accidental mixing of session formats.

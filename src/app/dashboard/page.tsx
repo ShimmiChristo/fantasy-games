@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-helpers';
 import LogoutButton from '@/components/LogoutButton';
 import styles from './page.module.css';
 import { prisma } from '@/lib/prisma';
+import { redirect } from 'next/navigation';
 import type { PrismaClient } from '@prisma/client';
 
 type BoardMemberDelegate = {
@@ -16,6 +17,38 @@ function getBoardMemberDelegate(prismaClient: PrismaClient): BoardMemberDelegate
 export default async function DashboardPage() {
   const user = await requireAuth();
 
+  async function createBoardAction(formData: FormData) {
+    'use server';
+
+    const authedUser = await requireAuth();
+
+    const name = String(formData.get('name') || '').trim();
+    if (!name) {
+      redirect('/dashboard?createBoard=missingName');
+    }
+
+    try {
+      await prisma.board.create({
+        data: {
+          name,
+          createdByUserId: authedUser.id,
+          members: {
+            create: {
+              userId: authedUser.id,
+              role: 'OWNER',
+            },
+          },
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      console.error('Create board failed:', e);
+      redirect('/dashboard?createBoard=failed');
+    }
+
+    redirect('/dashboard?createBoard=ok');
+  }
+
   const boardMemberDelegate = getBoardMemberDelegate(prisma);
   const memberships = (await boardMemberDelegate.findMany({
     where: { userId: user.id },
@@ -27,12 +60,13 @@ export default async function DashboardPage() {
           id: true,
           name: true,
           createdAt: true,
+          createdByUserId: true,
         },
       },
     },
   })) as unknown as {
     role: 'OWNER' | 'ADMIN' | 'MEMBER';
-    board: { id: string; name: string; createdAt: Date };
+    board: { id: string; name: string; createdAt: Date; createdByUserId: string };
   }[];
 
   return (
@@ -44,6 +78,15 @@ export default async function DashboardPage() {
         </div>
         <div className={styles.content}>
           <p className={styles.welcome}>Welcome, {user.email}!</p>
+
+          {/* Non-admin board creation */}
+          <section style={{ marginTop: 16 }}>
+            <h2 style={{ margin: '0 0 10px' }}>Create a board</h2>
+            <form action={createBoardAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input name="name" placeholder="Board name" />
+              <button type="submit">Create</button>
+            </form>
+          </section>
 
           {user.role === 'ADMIN' && (
             <p>
@@ -59,22 +102,36 @@ export default async function DashboardPage() {
             ) : (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {memberships.map((m) => {
-                  const canManage = user.role === 'ADMIN' && (m.role === 'OWNER' || m.role === 'ADMIN');
+                  const isBoardCreator = m.board.createdByUserId === user.id;
 
                   return (
                     <li key={m.board.id} style={{ marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <a href={`/squares?boardId=${encodeURIComponent(m.board.id)}`}>
-                          {m.board.name}
-                        </a>
-                        <span style={{ fontSize: 12, opacity: 0.75 }}>({m.role})</span>
+                        <a href={`/squares?boardId=${encodeURIComponent(m.board.id)}`}>{m.board.name}</a>
 
-                        {canManage ? (
-                          <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <a href="/admin">Edit</a>
-                            <a href="/admin">Delete</a>
+                        <span style={{ fontSize: 12, opacity: 0.75 }}>
+                          Role: <strong>{m.role}</strong>
+                        </span>
+
+                        {isBoardCreator ? (
+                          <span style={{ fontSize: 12, opacity: 0.75 }}>
+                            Board admin: <strong>yes</strong>
                           </span>
-                        ) : null}
+                        ) : (
+                          <span style={{ fontSize: 12, opacity: 0.75 }}>
+                            Board admin: <strong>no</strong>
+                          </span>
+                        )}
+
+                        {user.role === 'ADMIN' ? (
+                          <span style={{ fontSize: 12, opacity: 0.75 }}>
+                            Global admin: <strong>yes</strong>
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, opacity: 0.75 }}>
+                            Global admin: <strong>no</strong>
+                          </span>
+                        )}
                       </div>
                     </li>
                   );

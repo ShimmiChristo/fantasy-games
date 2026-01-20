@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/auth-helpers';
+import { getUserFromSession } from '@/lib/auth';
 import type { PrismaClient } from '@prisma/client';
 
 type BoardDelegate = {
@@ -38,7 +39,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const user = await requireAdmin();
+  // Board creation should be available to any signed-in user.
+  const user = await getUserFromSession();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === 'string' ? body.name.trim() : '';

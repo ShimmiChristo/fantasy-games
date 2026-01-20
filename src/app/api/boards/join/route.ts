@@ -2,6 +2,32 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromSession } from '@/lib/auth';
 import { findValidInvite } from '@/lib/boards';
+import type { PrismaClient } from '@prisma/client';
+
+type BoardInviteDelegate = {
+  update: (args: unknown) => Promise<unknown>;
+};
+
+type BoardMemberDelegate = {
+  upsert: (args: unknown) => Promise<unknown>;
+};
+
+type SquareDelegate = {
+  count: (args: unknown) => Promise<number>;
+  createMany: (args: unknown) => Promise<unknown>;
+};
+
+function getBoardInviteDelegate(prismaClient: PrismaClient): BoardInviteDelegate {
+  return (prismaClient as unknown as { boardInvite: BoardInviteDelegate }).boardInvite;
+}
+
+function getBoardMemberDelegate(prismaClient: PrismaClient): BoardMemberDelegate {
+  return (prismaClient as unknown as { boardMember: BoardMemberDelegate }).boardMember;
+}
+
+function getSquareDelegate(prismaClient: PrismaClient): SquareDelegate {
+  return (prismaClient as unknown as { square: SquareDelegate }).square;
+}
 
 export async function POST(req: Request) {
   const user = await getUserFromSession();
@@ -20,22 +46,26 @@ export async function POST(req: Request) {
     );
   }
 
-  await prisma.$transaction(async (tx) => {
+  const boardInviteDelegate = getBoardInviteDelegate(prisma);
+  const boardMemberDelegate = getBoardMemberDelegate(prisma);
+  const squareDelegate = getSquareDelegate(prisma);
+
+  await prisma.$transaction(async () => {
     // Mark invite used
-    await tx.boardInvite.update({
+    await boardInviteDelegate.update({
       where: { id: invite.id },
       data: { usedAt: new Date() },
     });
 
-    // Ensure membership exists
-    await tx.boardMember.upsert({
+    // Ensure membership exists. Invited users are non-admin members by default.
+    await boardMemberDelegate.upsert({
       where: { boardId_userId: { boardId: invite.boardId, userId: user.id } },
       create: { boardId: invite.boardId, userId: user.id, role: 'MEMBER' },
       update: {},
     });
 
     // Ensure 10x10 grid exists for this board
-    const existing = await tx.square.count({ where: { boardId: invite.boardId } });
+    const existing = await squareDelegate.count({ where: { boardId: invite.boardId } });
     if (existing < 100) {
       const data: { boardId: string; row: number; col: number }[] = [];
       for (let row = 0; row < 10; row++) {
@@ -44,7 +74,7 @@ export async function POST(req: Request) {
         }
       }
       // createMany is fine; unique constraint is boardId,row,col
-      await tx.square.createMany({ data });
+      await squareDelegate.createMany({ data });
     }
   });
 
