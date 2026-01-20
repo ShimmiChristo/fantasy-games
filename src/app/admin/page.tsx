@@ -1,8 +1,8 @@
-import { requireAdmin } from '@/lib/auth-helpers';
+import { requireAuth } from '@/lib/auth-helpers';
 import AdminBoardsClient from './AdminBoardsClient';
 
 export default async function AdminPage() {
-  const user = await requireAdmin();
+  const user = await requireAuth();
 
   async function createBoardAction(formData: FormData) {
     'use server';
@@ -22,7 +22,8 @@ export default async function AdminPage() {
       cache: 'no-store',
     },
   );
-  const { boards } = (await boardsRes.json().catch(() => ({ boards: [] }))) as { boards: { id: string; name: string }[] };
+  const data = (await boardsRes.json().catch(() => null)) as { boards?: { id: string; name: string }[] } | null;
+  const boards = Array.isArray(data?.boards) ? data!.boards : [];
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>

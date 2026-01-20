@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAdmin } from '@/lib/auth-helpers';
+import { getUserFromSession } from '@/lib/auth';
 import { generateInviteToken, requireBoardAdmin } from '@/lib/boards';
 
 function isValidEmail(email: string): boolean {
@@ -9,10 +9,12 @@ function isValidEmail(email: string): boolean {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ boardId: string }> }) {
-  const user = await requireAdmin();
+  const user = await getUserFromSession();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const { boardId } = await params;
 
-  // Global admin still must be an admin of the board (OWNER/ADMIN).
+  // Must be an admin of the board (OWNER/ADMIN). Global admins are still allowed via requireBoardAdmin.
   await requireBoardAdmin(user.id, boardId);
 
   const body = await req.json().catch(() => null);

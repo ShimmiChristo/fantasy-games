@@ -15,6 +15,7 @@ type BoardDelegate = {
 
 type BoardMemberDelegate = {
   findUnique: (args: unknown) => Promise<unknown>;
+  findMany: (args: unknown) => Promise<unknown>;
 };
 
 function getBoardDelegate(prismaClient: PrismaClient): BoardDelegate {
@@ -26,15 +27,18 @@ function getBoardMemberDelegate(prismaClient: PrismaClient): BoardMemberDelegate
 }
 
 export async function GET() {
-  const user = await requireAdmin();
+  const user = await getUserFromSession();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const boardDelegate = getBoardDelegate(prisma);
+  const boardMemberDelegate = getBoardMemberDelegate(prisma);
 
-  const boards = await boardDelegate.findMany({
-    where: { createdByUserId: user.id },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, createdAt: true, isEditable: true, editableUntil: true },
-  });
+  const memberships = (await boardMemberDelegate.findMany({
+    where: { userId: user.id },
+    orderBy: [{ board: { createdAt: 'desc' } }, { createdAt: 'desc' }],
+    select: { board: { select: { id: true, name: true, createdAt: true, isEditable: true, editableUntil: true } } },
+  } as unknown)) as unknown as { board: { id: string; name: string; createdAt: Date; isEditable: boolean; editableUntil: Date | null } }[];
+
+  const boards = memberships.map((m) => m.board);
 
   return NextResponse.json({ boards }, { status: 200 });
 }

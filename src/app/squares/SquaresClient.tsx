@@ -41,6 +41,10 @@ type ApiBoardInvite = {
   expiresAt: string | Date;
 };
 
+type CreateInviteResponse =
+  | { invite?: { joinUrl?: string }; error?: string }
+  | { error: string };
+
 function displayName(u: { email: string; firstName?: string | null; lastName?: string | null }): string {
   const full = [u.firstName?.trim(), u.lastName?.trim()].filter(Boolean).join(' ');
   if (full) return full.length > 18 ? `${full.slice(0, 16)}…` : full;
@@ -63,6 +67,72 @@ function msToCountdown(ms: number): string {
   const pad2 = (n: number) => String(n).padStart(2, '0');
   if (h > 0) return `${h}:${pad2(m)}:${pad2(s)}`;
   return `${m}:${pad2(s)}`;
+}
+
+function InviteLinkPanel({ boardId }: { boardId: string }) {
+  const [email, setEmail] = useState('');
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setJoinUrl(null);
+    setBusy(true);
+
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/invites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = (await res.json().catch(() => null)) as CreateInviteResponse | null;
+      if (!res.ok) {
+        setError((data as { error?: string } | null)?.error || 'Failed to create invite');
+        return;
+      }
+
+      const url = (data as { invite?: { joinUrl?: string } } | null)?.invite?.joinUrl;
+      setJoinUrl(url || null);
+      if (!url) setError('Invite created but no join URL was returned');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section style={{ marginTop: 18 }} aria-label="Invite users">
+      <h2 style={{ fontSize: 14, margin: '0 0 8px', opacity: 0.9 }}>Invite</h2>
+      <form onSubmit={onCreate} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Invitee email" />
+        <button type="submit" className={styles.primaryButton} disabled={busy || !email.trim()}>
+          {busy ? 'Creating' : 'Create invite link'}
+        </button>
+      </form>
+
+      {error ? <div style={{ marginTop: 6, color: 'crimson' }}>{error}</div> : null}
+
+      {joinUrl ? (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Share this link:</div>
+          <code style={{ display: 'block', padding: 8, background: '#111', color: '#fff', overflowX: 'auto' }}>{joinUrl}</code>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                void navigator.clipboard?.writeText(joinUrl).catch(() => null);
+              }}
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 export default function SquaresClient({ user }: { user: SessionUser }) {
@@ -332,6 +402,9 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
   }, [board, boardEditState.locked, boardEditState.editableUntil, boardEditState.msRemaining]);
 
   const showRoster = (members && members.length > 0) || (invites && invites.length > 0);
+
+  // If the API returned roster/invites, viewer is OWNER/ADMIN (or global ADMIN).
+  const canInvite = !!(boardId && (members !== null || invites !== null));
 
   return (
     <main className={styles.container}>
@@ -617,6 +690,8 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
           ) : null}
         </section>
       ) : null}
+
+      {canInvite ? <InviteLinkPanel boardId={boardId!} /> : null}
     </main>
   );
 }
