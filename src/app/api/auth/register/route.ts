@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, createSession, isValidEmail, normalizeEmail } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import type { Prisma } from '@prisma/client';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, password, firstName, lastName } = body;
 
     // Validation
     if (!email || !password) {
@@ -66,7 +67,10 @@ export async function POST(request: NextRequest) {
       data: {
         email: normalizedEmail,
         password: hashedPassword,
-      },
+        firstName: typeof firstName === 'string' && firstName.trim() ? firstName.trim() : null,
+        lastName: typeof lastName === 'string' && lastName.trim() ? lastName.trim() : null,
+        role: 'USER',
+      } as Prisma.UserCreateInput,
     });
 
     // Create session

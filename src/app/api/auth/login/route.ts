@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session
+    // Create JWT session and set cookie
     const token = await createSession(user.id);
     const cookieStore = await cookies();
     cookieStore.set('session', token, {

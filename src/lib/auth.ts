@@ -3,6 +3,8 @@ import { SignJWT, jwtVerify } from 'jose';
 import { prisma } from './prisma';
 import { cookies } from 'next/headers';
 import { createHmac, timingSafeEqual } from 'crypto';
+import type { Prisma } from '@prisma/client';
+import type { $Enums } from '@prisma/client';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || 'default-secret-change-in-production';
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -105,16 +107,19 @@ export async function getUserFromSession() {
     return null;
   }
 
+  const select = {
+    id: true,
+    email: true,
+    role: true,
+    createdAt: true,
+  } satisfies Prisma.UserSelect;
+
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: {
-      id: true,
-      email: true,
-      createdAt: true,
-    },
+    select,
   });
 
-  return user;
+  return user as (typeof user & { role: $Enums.Role }) | null;
 }
 
 /**
@@ -219,17 +224,20 @@ export async function getUserFromCookie() {
       return null;
     }
     
+    const select = {
+      id: true,
+      email: true,
+      role: true,
+      createdAt: true,
+    } satisfies Prisma.UserSelect;
+
     // Fetch user from database
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        createdAt: true,
-      },
+      select,
     });
     
-    return user;
+    return user as (typeof user & { role: $Enums.Role }) | null;
   } catch {
     return null;
   }
