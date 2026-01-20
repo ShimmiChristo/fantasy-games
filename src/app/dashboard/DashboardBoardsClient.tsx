@@ -284,14 +284,24 @@ export default function DashboardBoardsClient({
           <li key={m.board.id} style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <a
-                href={locked ? undefined : `/squares?boardId=${encodeURIComponent(m.board.id)}`}
-                onClick={(e) => {
+                href={`/squares?boardId=${encodeURIComponent(m.board.id)}`}
+                onClick={() => {
                   if (locked) {
-                    e.preventDefault();
-                    setErrorById((prev) => ({ ...prev, [m.board.id]: 'This board is locked and can no longer be edited.' }));
+                    setErrorById((prev) => ({
+                      ...prev,
+                      [m.board.id]: 'This board is locked for edits, but you can still view it.',
+                    }));
                   }
                 }}
-                style={locked ? { pointerEvents: 'auto', opacity: 0.6 } : undefined}
+                style={{
+                  ...((locked ? { opacity: 0.75 } : undefined) as React.CSSProperties | undefined),
+                  ...((currentUserRole === 'ADMIN' || m.role === 'OWNER')
+                    ? {
+                        textDecoration: 'underline',
+                        textUnderlineOffset: 2,
+                      }
+                    : null),
+                }}
               >
                 {m.board.name}
               </a>
