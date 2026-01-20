@@ -28,7 +28,20 @@ type ApiBoard = {
   editableUntil?: string | Date | null;
 } | null;
 
-function displayName(u: NonNullable<ApiSquare['user']>): string {
+type ApiBoardMember = {
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  createdAt: string | Date;
+  user: { id: string; email: string; firstName?: string | null; lastName?: string | null };
+};
+
+type ApiBoardInvite = {
+  id: string;
+  email: string;
+  createdAt: string | Date;
+  expiresAt: string | Date;
+};
+
+function displayName(u: { email: string; firstName?: string | null; lastName?: string | null }): string {
   const full = [u.firstName?.trim(), u.lastName?.trim()].filter(Boolean).join(' ');
   if (full) return full.length > 18 ? `${full.slice(0, 16)}…` : full;
   return u.email;
@@ -68,6 +81,9 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
   const [board, setBoard] = useState<ApiBoard>(null);
 
   const [squares, setSquares] = useState<ApiSquare[]>([]);
+  const [members, setMembers] = useState<ApiBoardMember[] | null>(null);
+  const [invites, setInvites] = useState<ApiBoardInvite[] | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +117,8 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     if (!boardId) {
       setBoard(null);
       setSquares([]);
+      setMembers(null);
+      setInvites(null);
       setLoading(false);
       setError('Missing boardId. Use an invite link or open /squares?boardId=...');
       return;
@@ -115,6 +133,10 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
       setSquares((data.squares || []) as ApiSquare[]);
       setBoard((data.board || null) as ApiBoard);
+
+      // Only present for global admins / board OWNER/ADMIN.
+      setMembers((data.members || null) as ApiBoardMember[] | null);
+      setInvites((data.invites || null) as ApiBoardInvite[] | null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load squares');
     } finally {
@@ -308,6 +330,8 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     if (boardEditState.editableUntil) return `Locks in ${msToCountdown(boardEditState.msRemaining ?? 0)}`;
     return 'Editable';
   }, [board, boardEditState.locked, boardEditState.editableUntil, boardEditState.msRemaining]);
+
+  const showRoster = (members && members.length > 0) || (invites && invites.length > 0);
 
   return (
     <main className={styles.container}>
@@ -538,6 +562,60 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* Roster (admins / owners / board admins only). API omits these for regular members. */}
+      {showRoster ? (
+        <section style={{ marginTop: 18 }} aria-label="Board roster">
+          <h2 style={{ fontSize: 14, margin: '0 0 8px', opacity: 0.9 }}>Board users</h2>
+
+          {members && members.length ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Members</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {members.map((m) => (
+                  <li key={m.user.id} style={{ marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{displayName(m.user)}</span>{' '}
+                    <span style={{ fontSize: 12, opacity: 0.75 }}>({m.user.email})</span>{' '}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: 'rgba(148,163,184,0.18)',
+                        marginLeft: 8,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.4,
+                      }}
+                      title="Board role"
+                    >
+                      {m.role}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {invites && invites.length ? (
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Pending invites</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {invites.map((i) => {
+                  const exp = parseDate(i.expiresAt);
+                  return (
+                    <li key={i.id} style={{ marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{i.email}</span>{' '}
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>
+                        (expires {exp ? exp.toLocaleString() : '—'})
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </section>
       ) : null}
     </main>
   );

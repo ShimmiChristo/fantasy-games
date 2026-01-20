@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromSession } from '@/lib/auth';
-import { canEditBoardNow } from '@/lib/boards';
+import { canEditBoardNow, requireBoardAdmin } from '@/lib/boards';
 import type { PrismaClient } from '@prisma/client';
 
 function parseIntParam(value: unknown): number | null {
@@ -29,6 +29,22 @@ type BoardDelegate = {
 
 function getBoardDelegate(prismaClient: PrismaClient): BoardDelegate {
   return (prismaClient as unknown as { board: BoardDelegate }).board;
+}
+
+type BoardInviteDelegate = {
+  findMany: (args: unknown) => Promise<unknown>;
+};
+
+function getBoardInviteDelegate(prismaClient: PrismaClient): BoardInviteDelegate {
+  return (prismaClient as unknown as { boardInvite: BoardInviteDelegate }).boardInvite;
+}
+
+type BoardMemberDelegate = {
+  findMany: (args: unknown) => Promise<unknown>;
+};
+
+function getBoardMemberDelegate(prismaClient: PrismaClient): BoardMemberDelegate {
+  return (prismaClient as unknown as { boardMember: BoardMemberDelegate }).boardMember;
 }
 
 function parseBoardId(url: URL): string | null {
@@ -100,7 +116,38 @@ export async function GET(req: Request) {
     select: { id: true, name: true, isEditable: true, editableUntil: true },
   } as unknown);
 
-  return NextResponse.json({ squares, board }, { status: 200 });
+  // If viewer is a global admin or board admin, include member + invite lists.
+  const viewer = await getUserFromSession();
+  let members: unknown[] | undefined;
+  let invites: unknown[] | undefined;
+
+  if (viewer) {
+    const canSeeRoster =
+      viewer.role === 'ADMIN' || (await requireBoardAdmin(viewer.id, boardId).then(() => true).catch(() => false));
+
+    if (canSeeRoster) {
+      const boardMemberDelegate = getBoardMemberDelegate(prisma);
+      const boardInviteDelegate = getBoardInviteDelegate(prisma);
+
+      members = (await boardMemberDelegate.findMany({
+        where: { boardId },
+        orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          role: true,
+          createdAt: true,
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+      } as unknown)) as unknown as unknown[];
+
+      invites = (await boardInviteDelegate.findMany({
+        where: { boardId, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: [{ createdAt: 'desc' }],
+        select: { id: true, email: true, expiresAt: true, createdAt: true },
+      } as unknown)) as unknown as unknown[];
+    }
+  }
+
+  return NextResponse.json({ squares, board, members, invites }, { status: 200 });
 }
 
 export async function POST(req: Request) {
