@@ -393,6 +393,46 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     }
   }
 
+  async function removeMember(userId: string) {
+    if (!boardId) return;
+    setClaiming(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Unable to remove member');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to remove member');
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  async function revokeInvite(inviteId: string) {
+    if (!boardId) return;
+    setClaiming(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/invites`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Unable to revoke invite');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to revoke invite');
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   const lockLabel = useMemo(() => {
     if (!board) return null;
 
@@ -647,7 +687,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
               <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Members</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {members.map((m) => (
-                  <li key={m.user.id} style={{ marginBottom: 4 }}>
+                  <li key={m.user.id} style={{ marginBottom: 6 }}>
                     <span style={{ fontWeight: 600 }}>{displayName(m.user)}</span>{' '}
                     <span style={{ fontSize: 12, opacity: 0.75 }}>({m.user.email})</span>{' '}
                     <span
@@ -664,6 +704,21 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                     >
                       {m.role}
                     </span>
+
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      style={{ marginLeft: 10, padding: '6px 8px', fontSize: 12 }}
+                      disabled={claiming}
+                      onClick={() => {
+                        if (confirm(`Remove ${m.user.email} from this board? Their squares will be unclaimed.`)) {
+                          void removeMember(m.user.id);
+                        }
+                      }}
+                      title="Remove member"
+                    >
+                      Remove
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -677,11 +732,26 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                 {invites.map((i) => {
                   const exp = parseDate(i.expiresAt);
                   return (
-                    <li key={i.id} style={{ marginBottom: 4 }}>
+                    <li key={i.id} style={{ marginBottom: 6 }}>
                       <span style={{ fontWeight: 600 }}>{i.email}</span>{' '}
                       <span style={{ fontSize: 12, opacity: 0.75 }}>
                         (expires {exp ? exp.toLocaleString() : '—'})
                       </span>
+
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        style={{ marginLeft: 10, padding: '6px 8px', fontSize: 12 }}
+                        disabled={claiming}
+                        onClick={() => {
+                          if (confirm(`Revoke invite for ${i.email}?`)) {
+                            void revokeInvite(i.id);
+                          }
+                        }}
+                        title="Revoke invite"
+                      >
+                        Revoke
+                      </button>
                     </li>
                   );
                 })}

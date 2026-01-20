@@ -42,3 +42,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ boardId
 
   return NextResponse.json({ invite: { ...invite, joinUrl } }, { status: 201 });
 }
+
+export async function DELETE(req: Request, { params }: { params: Promise<{ boardId: string }> }) {
+  const user = await getUserFromSession();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+  const { boardId } = await params;
+  await requireBoardAdmin(user.id, boardId);
+
+  const body = await req.json().catch(() => null);
+  const inviteId = typeof body?.inviteId === 'string' ? body.inviteId.trim() : '';
+  if (!inviteId) return NextResponse.json({ error: 'inviteId is required' }, { status: 400 });
+
+  // Only allow deleting unused invites that belong to this board.
+  const deleted = await prisma.boardInvite.deleteMany({
+    where: { id: inviteId, boardId, usedAt: null },
+  });
+
+  if (deleted.count === 0) {
+    return NextResponse.json({ error: 'Invite not found (or already used)' }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 });
+}
