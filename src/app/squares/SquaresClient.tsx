@@ -21,6 +21,8 @@ type ApiSquare = {
   user: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
 };
 
+type ApiBoard = { id: string; name: string } | null;
+
 function displayName(u: NonNullable<ApiSquare['user']>): string {
   const full = [u.firstName?.trim(), u.lastName?.trim()].filter(Boolean).join(' ');
   if (full) return full.length > 18 ? `${full.slice(0, 16)}…` : full;
@@ -40,6 +42,8 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     setBoardIdReady(true);
   }, []);
 
+  const [board, setBoard] = useState<ApiBoard>(null);
+
   const [squares, setSquares] = useState<ApiSquare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +59,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
   async function load() {
     if (!boardId) {
+      setBoard(null);
       setSquares([]);
       setLoading(false);
       setError('Missing boardId. Use an invite link or open /squares?boardId=...');
@@ -67,7 +72,9 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
       const res = await fetch(`/api/squares?boardId=${encodeURIComponent(boardId)}`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to load squares');
-      setSquares(data.squares as ApiSquare[]);
+
+      setSquares((data.squares || []) as ApiSquare[]);
+      setBoard((data.board || null) as ApiBoard);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load squares');
     } finally {
@@ -81,6 +88,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     if (!boardIdReady) return;
 
     if (!boardId) {
+      setBoard(null);
       setSquares([]);
       setLoading(false);
       setError('Missing boardId. Use an invite link or open /squares?boardId=...');
@@ -248,6 +256,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>Super Bowl Squares</h1>
+          {board?.name ? <div className={styles.subtitle}>Board: <strong>{board.name}</strong></div> : null}
           <p className={styles.subtitle}>
             Pick one square. Rows are <strong>{HOME_TEAM}</strong> last digit. Columns are <strong>{AWAY_TEAM}</strong> last digit.
           </p>

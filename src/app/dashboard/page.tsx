@@ -5,6 +5,7 @@ import styles from './page.module.css';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import type { PrismaClient } from '@prisma/client';
+import DashboardBoardsClient from './DashboardBoardsClient';
 
 type BoardMemberDelegate = {
   findMany: (args: unknown) => Promise<unknown>;
@@ -100,43 +101,7 @@ export default async function DashboardPage() {
             {!memberships.length ? (
               <p style={{ margin: 0, opacity: 0.8 }}>You don’t have access to any boards yet.</p>
             ) : (
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {memberships.map((m) => {
-                  const isBoardCreator = m.board.createdByUserId === user.id;
-
-                  return (
-                    <li key={m.board.id} style={{ marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <a href={`/squares?boardId=${encodeURIComponent(m.board.id)}`}>{m.board.name}</a>
-
-                        <span style={{ fontSize: 12, opacity: 0.75 }}>
-                          Role: <strong>{m.role}</strong>
-                        </span>
-
-                        {isBoardCreator ? (
-                          <span style={{ fontSize: 12, opacity: 0.75 }}>
-                            Board admin: <strong>yes</strong>
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 12, opacity: 0.75 }}>
-                            Board admin: <strong>no</strong>
-                          </span>
-                        )}
-
-                        {user.role === 'ADMIN' ? (
-                          <span style={{ fontSize: 12, opacity: 0.75 }}>
-                            Global admin: <strong>yes</strong>
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 12, opacity: 0.75 }}>
-                            Global admin: <strong>no</strong>
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <DashboardBoardsClient memberships={memberships} currentUserId={user.id} currentUserRole={user.role} />
             )}
           </section>
 

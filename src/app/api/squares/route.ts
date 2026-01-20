@@ -60,7 +60,13 @@ export async function GET(req: Request) {
     include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
   } as unknown);
 
-  return NextResponse.json({ squares }, { status: 200 });
+  // Fetch board name for display in the UI.
+  const board = await prisma.board.findUnique({
+    where: { id: boardId },
+    select: { id: true, name: true },
+  });
+
+  return NextResponse.json({ squares, board }, { status: 200 });
 }
 
 export async function POST(req: Request) {

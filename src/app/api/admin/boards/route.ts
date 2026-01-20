@@ -104,7 +104,9 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const user = await requireAdmin();
+  // Allow deletion for board OWNERs (and still allow global admins).
+  const user = (await getUserFromSession()) || (await requireAdmin().catch(() => null));
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const url = new URL(req.url);
   const boardId = url.searchParams.get('boardId')?.trim() || '';
@@ -124,7 +126,7 @@ export async function DELETE(req: Request) {
   });
 
   const membershipRole = membership?.role;
-  const canDelete = !!isCreator || membershipRole === 'OWNER';
+  const canDelete = user.role === 'ADMIN' || !!isCreator || membershipRole === 'OWNER';
   if (!canDelete) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
 
   await boardDelegate.delete({ where: { id: boardId } });
