@@ -157,6 +157,8 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
+  const [optimisticKeys, setOptimisticKeys] = useState<Set<string>>(() => new Set());
 
   const [pending, setPending] = useState<{ row: number; col: number; action: 'claim' | 'unclaim' } | null>(null);
   const [claiming, setClaiming] = useState(false);
@@ -177,6 +179,66 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
     return { isEditable, editableUntil, locked, msRemaining };
   }, [board?.isEditable, board?.editableUntil, now]);
+
+  // Shuffle helpers (deterministic per board when seeded).
+  const xmur3 = (str: string) => {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  };
+
+  const mulberry32 = (a: number) => {
+    return function () {
+      let t = (a += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  const shuffleWithSeed = useMemo(() => {
+    return (list: number[], seedStr: string): number[] => {
+      const seed = xmur3(seedStr)();
+      const rand = mulberry32(seed);
+      const arr = [...list];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+  }, []);
+
+  // When locked, headers should become randomized but stable for a given board.
+  // Use boardId as the seed so all viewers see the same permutation.
+  const colDigits = useMemo(() => {
+    if (!boardId || !boardEditState.locked) return digits;
+    return shuffleWithSeed(digits, `${boardId}:cols`);
+  }, [boardId, boardEditState.locked, digits, shuffleWithSeed]);
+
+  const rowDigits = useMemo(() => {
+    if (!boardId || !boardEditState.locked) return digits;
+    return shuffleWithSeed(digits, `${boardId}:rows`);
+  }, [boardId, boardEditState.locked, digits, shuffleWithSeed]);
+
+  const rowDigitByIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    rowDigits.forEach((d, idx) => map.set(idx, d));
+    return map;
+  }, [rowDigits]);
+
+  const colDigitByIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    colDigits.forEach((d, idx) => map.set(idx, d));
+    return map;
+  }, [colDigits]);
 
   const squaresByKey = useMemo(() => {
     const map = new Map<string, ApiSquare>();
@@ -234,8 +296,10 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
   const mySquares = useMemo(() => {
     if (!user?.id) return [];
-    return squares.filter((s) => s.userId === user.id);
-  }, [squares, user?.id]);
+    // Exclude squares that are only optimistically claimed client-side.
+    // This prevents "Your squares" from updating before the server confirms.
+    return squares.filter((s) => s.userId === user.id && !optimisticKeys.has(`${s.row}:${s.col}`));
+  }, [squares, user?.id, optimisticKeys]);
 
   async function confirmClaim() {
     if (!pending) return;
@@ -251,9 +315,10 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     }
 
     const { row, col } = pending;
+    const key = `${row}:${col}`;
 
     // If our current local state already shows it claimed, don't attempt.
-    const current = squaresByKey.get(`${row}:${col}`);
+    const current = squaresByKey.get(key);
     if (current?.userId) {
       setError('That square was already claimed.');
       setPending(null);
@@ -261,7 +326,18 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     }
 
     setClaiming(true);
-    setError(null);
+
+    // NOTE: Don't clear error here; if we hit a hard validation like the per-email limit
+    // we want to show that immediately in the confirm modal context.
+    setLimitReached(false);
+
+    // Mark this square as optimistically claimed so it doesn't appear in "Your squares"
+    // until the server confirms.
+    setOptimisticKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
 
     // Optimistically mark claimed in the UI to avoid double-click races.
     // We keep minimal user info; server response + reload will make it authoritative.
@@ -289,7 +365,32 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
         // Re-sync and show a helpful message.
         const msg = data?.error || (res.status === 409 ? 'Square already claimed' : 'Unable to claim square');
         setError(msg);
+
+        const isLimit = typeof msg === 'string' && msg.toLowerCase().includes('square limit reached');
+        setLimitReached(isLimit);
+
+        // If the server rejected the claim, roll back our optimistic claim so the
+        // square returns to blank immediately.
+        setSquares((prev) =>
+          prev.map((s) => (s.row === row && s.col === col ? { ...s, userId: null, user: null } : s)),
+        );
+
+        // And remove the optimistic marker.
+        setOptimisticKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+
+        // IMPORTANT: `load()` clears `error` at the start. For 409s (limit reached,
+        // already claimed, etc.) we want to keep this message visible in the modal,
+        // so do not reload immediately.
+        if (res.status === 409) {
+          return;
+        }
+
         await load();
+        setPending(null);
         return;
       }
 
@@ -299,11 +400,26 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
         setSquares((prev) => prev.map((s) => (s.row === row && s.col === col ? claimed : s)));
       }
 
+      // Claim confirmed by server.
+      setOptimisticKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+
       // Refresh to ensure authoritative state
       await load();
       setPending(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to claim square');
+
+      // Best-effort rollback of optimistic marker on unexpected errors.
+      setOptimisticKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+
       await load();
     } finally {
       setClaiming(false);
@@ -513,7 +629,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                   Your squares:{' '}
                   <strong>
                     {mySquares
-                      .map((s) => `${s.row}/${s.col}`)
+                      .map((s) => s.row * 10 + s.col + 1)
                       .slice(0, 8)
                       .join(', ')}
                     {mySquares.length > 8 ? '…' : ''}
@@ -562,17 +678,17 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
             {/* Row 1: corner + spacer (row-digit column) + 0-9 column headers */}
             <div className={styles.corner} aria-hidden="true" />
             <div className={styles.teamHeaderTopSpacer} aria-hidden="true" />
-            {digits.map((d) => (
-              <div key={`col-${d}`} className={styles.colHeader} role="columnheader">
-                {d}
+            {digits.map((idx) => (
+              <div key={`col-${idx}`} className={styles.colHeader} role="columnheader">
+                {boardEditState.locked ? colDigitByIndex.get(idx) : '?'}
               </div>
             ))}
 
             {/* For each home row, render: left team label for first, then row header digit + 10 cells */}
-            {digits.map((rowDigit, rowIdx) => {
+            {digits.map((rowIdx) => {
               const leftHeader = rowIdx === 0;
               return (
-                <div key={`row-${rowDigit}`} className={styles.row} role="row">
+                <div key={`row-${rowIdx}`} className={styles.row} role="row">
                   {leftHeader ? (
                     <div className={styles.teamHeaderLeftFull} role="rowheader">
                       {HOME_TEAM}
@@ -580,10 +696,13 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                   ) : null}
 
                   <div className={styles.rowHeader} role="rowheader">
-                    {rowDigit}
+                    {boardEditState.locked ? rowDigitByIndex.get(rowIdx) : '?'}
                   </div>
 
-                  {digits.map((colDigit) => {
+                  {digits.map((colIdx) => {
+                    const rowDigit = rowIdx;
+                    const colDigit = colIdx;
+
                     const sq = squaresByKey.get(`${rowDigit}:${colDigit}`) ?? null;
                     const isClaimed = !!sq?.userId;
                     const isMine = !!(user?.id && sq?.userId === user.id);
@@ -594,6 +713,9 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                     const disabled = claiming || lockedForUser || !user || (isClaimed && !isMine);
 
                     const label = sq?.user ? displayName(sq.user) : '';
+
+                    // Row-major 1-100 coordinate label.
+                    const cellNumber = rowDigit * 10 + colDigit + 1;
 
                     return (
                       <button
@@ -607,11 +729,14 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                               : `${styles.cell} ${styles.cellOpen}`
                         }
                         disabled={disabled}
-                        onClick={() =>
-                          setPending({ row: rowDigit, col: colDigit, action: isMine ? 'unclaim' : 'claim' })
-                        }
+                        onClick={() => {
+                          // Clear any stale/global error so modal messaging matches this action.
+                          setError(null);
+                          setLimitReached(false);
+                          setPending({ row: rowDigit, col: colDigit, action: isMine ? 'unclaim' : 'claim' });
+                        }}
                         role="gridcell"
-                        aria-label={`Square row ${rowDigit}, column ${colDigit}${label ? ` claimed by ${label}` : ''}`}
+                        aria-label={`Square ${cellNumber}${label ? ` claimed by ${label}` : ''}`}
                         title={
                           !user
                             ? 'Sign in to claim'
@@ -626,9 +751,7 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                                     : 'Claim this square'
                         }
                       >
-                        <span className={styles.cellCoords}>
-                          {rowDigit}-{colDigit}
-                        </span>
+                        <span className={styles.cellCoords}>{cellNumber}</span>
                         <span className={styles.cellName}>{label}</span>
                         {user?.role === 'ADMIN' && isClaimed ? (
                           <span style={{ marginTop: 'auto' }}>
@@ -664,17 +787,26 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
         <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-label="Confirm square selection">
           <div className={styles.modal}>
             <h2 className={styles.modalTitle}>{pending.action === 'unclaim' ? 'Confirm unselect' : 'Confirm selection'}</h2>
+
+            {error ? (
+              <div className={styles.alert} role="alert" style={{ margin: '0 0 10px' }}>
+                {error}
+              </div>
+            ) : null}
+
             <p className={styles.modalText}>
               {pending.action === 'unclaim' ? (
                 <>
-                  Unselect (unclaim) square <strong>{pending.row}</strong> / <strong>{pending.col}</strong>?
+                  Unselect (unclaim) square{' '}
+                  <strong>{pending.row * 10 + pending.col + 1}</strong>?
                 </>
               ) : (
                 <>
-                  Claim square <strong>{pending.row}</strong> / <strong>{pending.col}</strong>?
+                  Claim square <strong>{pending.row * 10 + pending.col + 1}</strong>?
                 </>
               )}
             </p>
+
             <div className={styles.modalButtons}>
               <button type="button" className={styles.secondaryButton} onClick={() => setPending(null)} disabled={claiming}>
                 Cancel
@@ -684,8 +816,19 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                   {claiming ? 'Unselecting…' : 'Confirm'}
                 </button>
               ) : (
-                <button type="button" className={styles.primaryButton} onClick={() => void confirmClaim()} disabled={claiming}>
-                  {claiming ? 'Claiming…' : 'Confirm'}
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => {
+                    if (limitReached) {
+                      setPending(null);
+                      return;
+                    }
+                    void confirmClaim();
+                  }}
+                  disabled={claiming}
+                >
+                  {claiming ? 'Claiming…' : limitReached ? 'Ok' : 'Confirm'}
                 </button>
               )}
             </div>
