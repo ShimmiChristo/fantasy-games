@@ -6,6 +6,17 @@ export type BoardAccess = {
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
 };
 
+export type BoardEditState = {
+  isEditable: boolean;
+  editableUntil: Date | null;
+};
+
+export function canEditBoardNow(state: BoardEditState): boolean {
+  if (!state.isEditable) return false;
+  if (!state.editableUntil) return true;
+  return state.editableUntil.getTime() > Date.now();
+}
+
 export async function getBoardAccess(userId: string, boardId: string): Promise<BoardAccess | null> {
   const membership = await prisma.boardMember.findUnique({
     where: { boardId_userId: { boardId, userId } },

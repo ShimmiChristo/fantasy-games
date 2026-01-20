@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromSession } from '@/lib/auth';
+import { canEditBoardNow } from '@/lib/boards';
 import type { PrismaClient } from '@prisma/client';
 
 function parseIntParam(value: unknown): number | null {
@@ -20,6 +21,14 @@ type SquareDelegate = {
 
 function getSquareDelegate(prismaClient: PrismaClient): SquareDelegate {
   return (prismaClient as unknown as { square: SquareDelegate }).square;
+}
+
+type BoardDelegate = {
+  findUnique: (args: unknown) => Promise<unknown>;
+};
+
+function getBoardDelegate(prismaClient: PrismaClient): BoardDelegate {
+  return (prismaClient as unknown as { board: BoardDelegate }).board;
 }
 
 function parseBoardId(url: URL): string | null {
@@ -45,6 +54,30 @@ async function ensureGridExists(boardId: string) {
   await squareDelegate.createMany({ data } as unknown);
 }
 
+async function requireBoardEditable(boardId: string) {
+  const boardDelegate = getBoardDelegate(prisma);
+
+  const board = (await boardDelegate.findUnique({
+    where: { id: boardId },
+    select: { isEditable: true, editableUntil: true },
+  })) as unknown as { isEditable: boolean; editableUntil: Date | null } | null;
+
+  if (!board) {
+    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
+  }
+
+  if (
+    !canEditBoardNow({
+      isEditable: board.isEditable,
+      editableUntil: board.editableUntil,
+    })
+  ) {
+    return NextResponse.json({ error: 'Board is not editable' }, { status: 409 });
+  }
+
+  return null;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const boardId = parseBoardId(url);
@@ -60,11 +93,12 @@ export async function GET(req: Request) {
     include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
   } as unknown);
 
-  // Fetch board name for display in the UI.
-  const board = await prisma.board.findUnique({
+  // Fetch board info for display + lock countdown.
+  const boardDelegate = getBoardDelegate(prisma);
+  const board = await boardDelegate.findUnique({
     where: { id: boardId },
-    select: { id: true, name: true },
-  });
+    select: { id: true, name: true, isEditable: true, editableUntil: true },
+  } as unknown);
 
   return NextResponse.json({ squares, board }, { status: 200 });
 }
@@ -78,6 +112,9 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const boardId = parseBoardId(url);
   if (!boardId) return NextResponse.json({ error: 'boardId is required' }, { status: 400 });
+
+  const lockRes = await requireBoardEditable(boardId);
+  if (lockRes) return lockRes;
 
   const body = await req.json().catch(() => null);
   const row = parseIntParam(body?.row);
@@ -122,6 +159,12 @@ export async function DELETE(req: Request) {
 
   const body = await req.json().catch(() => null);
   const mode = typeof body?.mode === 'string' ? body.mode : '';
+
+  // Allow admins to reset regardless of edit-lock (optional), but block normal edits when locked.
+  if (!(mode === 'reset' && user.role === 'ADMIN')) {
+    const lockRes = await requireBoardEditable(boardId);
+    if (lockRes) return lockRes;
+  }
 
   if (mode === 'reset') {
     if (user.role !== 'ADMIN') {

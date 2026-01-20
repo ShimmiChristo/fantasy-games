@@ -54,6 +54,12 @@ model Board {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  /// If false, the board cannot be edited regardless of lock time.
+  isEditable      Boolean       @default(true)
+
+  /// If set and in the past, the board is no longer editable.
+  editableUntil   DateTime?
+
   createdBy User          @relation("BoardsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
   members   BoardMember[]
   invites   BoardInvite[]

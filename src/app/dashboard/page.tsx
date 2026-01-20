@@ -62,12 +62,21 @@ export default async function DashboardPage() {
           name: true,
           createdAt: true,
           createdByUserId: true,
+          isEditable: true,
+          editableUntil: true,
         },
       },
     },
   })) as unknown as {
     role: 'OWNER' | 'ADMIN' | 'MEMBER';
-    board: { id: string; name: string; createdAt: Date; createdByUserId: string };
+    board: {
+      id: string;
+      name: string;
+      createdAt: Date;
+      createdByUserId: string;
+      isEditable: boolean;
+      editableUntil: Date | null;
+    };
   }[];
 
   return (

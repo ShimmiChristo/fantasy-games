@@ -21,12 +21,35 @@ type ApiSquare = {
   user: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
 };
 
-type ApiBoard = { id: string; name: string } | null;
+type ApiBoard = {
+  id: string;
+  name: string;
+  isEditable?: boolean;
+  editableUntil?: string | Date | null;
+} | null;
 
 function displayName(u: NonNullable<ApiSquare['user']>): string {
   const full = [u.firstName?.trim(), u.lastName?.trim()].filter(Boolean).join(' ');
   if (full) return full.length > 18 ? `${full.slice(0, 16)}…` : full;
   return u.email;
+}
+
+function parseDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function msToCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const s = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const m = totalMinutes % 60;
+  const h = Math.floor(totalMinutes / 60);
+
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  if (h > 0) return `${h}:${pad2(m)}:${pad2(s)}`;
+  return `${m}:${pad2(s)}`;
 }
 
 export default function SquaresClient({ user }: { user: SessionUser }) {
@@ -50,6 +73,23 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
 
   const [pending, setPending] = useState<{ row: number; col: number; action: 'claim' | 'unclaim' } | null>(null);
   const [claiming, setClaiming] = useState(false);
+
+  // Re-render countdown every 1s.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const boardEditState = useMemo(() => {
+    const isEditable = board?.isEditable !== undefined ? !!board.isEditable : true;
+    const editableUntil = parseDate(board?.editableUntil);
+    const lockedByTime = !!editableUntil && editableUntil.getTime() <= now;
+    const locked = !isEditable || lockedByTime;
+    const msRemaining = editableUntil ? Math.max(0, editableUntil.getTime() - now) : null;
+
+    return { isEditable, editableUntil, locked, msRemaining };
+  }, [board?.isEditable, board?.editableUntil, now]);
 
   const squaresByKey = useMemo(() => {
     const map = new Map<string, ApiSquare>();
@@ -109,6 +149,11 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     if (pending.action !== 'claim') return;
     if (!user) {
       setError('Sign in to claim a square.');
+      return;
+    }
+    if (boardEditState.locked && user.role !== 'ADMIN') {
+      setError('This board is locked and can no longer be edited.');
+      setPending(null);
       return;
     }
 
@@ -177,6 +222,11 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     if (pending.action !== 'unclaim') return;
     if (!user) {
       setError('Sign in to unclaim a square.');
+      return;
+    }
+    if (boardEditState.locked && user.role !== 'ADMIN') {
+      setError('This board is locked and can no longer be edited.');
+      setPending(null);
       return;
     }
 
@@ -251,15 +301,53 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
     }
   }
 
+  const lockLabel = useMemo(() => {
+    if (!board) return null;
+
+    if (boardEditState.locked) return 'Locked';
+    if (boardEditState.editableUntil) return `Locks in ${msToCountdown(boardEditState.msRemaining ?? 0)}`;
+    return 'Editable';
+  }, [board, boardEditState.locked, boardEditState.editableUntil, boardEditState.msRemaining]);
+
   return (
     <main className={styles.container}>
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>Super Bowl Squares</h1>
-          {board?.name ? <div className={styles.subtitle}>Board: <strong>{board.name}</strong></div> : null}
+          {board?.name ? (
+            <div className={styles.subtitle}>
+              Board: <strong>{board.name}</strong>{' '}
+              {lockLabel ? (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 12,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: boardEditState.locked ? 'rgba(220,38,38,0.12)' : 'rgba(34,197,94,0.12)',
+                    color: boardEditState.locked ? 'rgb(185,28,28)' : 'rgb(21,128,61)',
+                  }}
+                  title={
+                    boardEditState.editableUntil
+                      ? `Editable until ${boardEditState.editableUntil.toLocaleString()}`
+                      : boardEditState.locked
+                        ? 'Board editing is disabled'
+                        : 'Board is editable'
+                  }
+                >
+                  {lockLabel}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <p className={styles.subtitle}>
             Pick one square. Rows are <strong>{HOME_TEAM}</strong> last digit. Columns are <strong>{AWAY_TEAM}</strong> last digit.
           </p>
+          {board && boardEditState.locked && user?.role !== 'ADMIN' ? (
+            <p className={styles.subtitle} style={{ color: 'rgb(185,28,28)' }}>
+              Board is locked. Claiming/unclaiming is disabled.
+            </p>
+          ) : null}
         </div>
 
         <div className={styles.meta}>
@@ -347,8 +435,10 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                     const isClaimed = !!sq?.userId;
                     const isMine = !!(user?.id && sq?.userId === user.id);
 
+                    const lockedForUser = boardEditState.locked && user?.role !== 'ADMIN';
+
                     // Allow clicking your own square to unclaim; other claimed squares remain disabled.
-                    const disabled = claiming || !user || (isClaimed && !isMine);
+                    const disabled = claiming || lockedForUser || !user || (isClaimed && !isMine);
 
                     const label = sq?.user ? displayName(sq.user) : '';
 
@@ -372,13 +462,15 @@ export default function SquaresClient({ user }: { user: SessionUser }) {
                         title={
                           !user
                             ? 'Sign in to claim'
-                            : claiming
-                              ? 'Working…'
-                              : isMine
-                                ? 'Unselect (unclaim) this square'
-                                : isClaimed
-                                  ? 'Already claimed'
-                                  : 'Claim this square'
+                            : lockedForUser
+                              ? 'Board is locked'
+                              : claiming
+                                ? 'Working…'
+                                : isMine
+                                  ? 'Unselect (unclaim) this square'
+                                  : isClaimed
+                                    ? 'Already claimed'
+                                    : 'Claim this square'
                         }
                       >
                         <span className={styles.cellCoords}>
