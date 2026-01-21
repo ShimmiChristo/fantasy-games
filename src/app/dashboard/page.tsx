@@ -98,49 +98,58 @@ export default async function DashboardPage() {
           <LogoutButton />
         </div>
         <div className={styles.content}>
-          <p className={styles.welcome}>Welcome, {user.email}!</p>
+          <p className={styles.welcome}>Welcome back, {user.email}!</p>
 
-          {/* Non-admin board creation */}
-          <section style={{ marginTop: 16 }}>
-            <h2 style={{ margin: '0 0 10px' }}>Create a board</h2>
-            <form action={createBoardAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input name="name" placeholder="Board name" />
-              <select name="type" defaultValue="SQUARES" style={{ padding: '8px 12px' }}>
-                <option value="SQUARES">Squares</option>
-                <option value="PROPS">Props</option>
+          {/* Admin link */}
+          {user.role === 'ADMIN' && (
+            <div className={styles.section}>
+              <Link href="/admin" className={styles.adminLink}>
+                Admin Settings
+              </Link>
+            </div>
+          )}
+
+          {/* Board creation section */}
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Create a Board</h2>
+            <form action={createBoardAction} className={styles.createBoardForm}>
+              <input name="name" placeholder="Enter board name" required />
+              <select name="type" defaultValue="SQUARES">
+                <option value="SQUARES">Squares Board</option>
+                <option value="PROPS">Props Board</option>
               </select>
-              <button type="submit">Create</button>
+              <button type="submit">Create Board</button>
             </form>
           </section>
 
-          {user.role === 'ADMIN' && (
-            <p>
-              <Link href="/admin">Admin settings</Link>
-            </p>
-          )}
-
-          <section style={{ marginTop: 16 }}>
-            <h2 style={{ margin: '0 0 10px' }}>Your boards</h2>
+          {/* Boards list section */}
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Your Boards</h2>
 
             {!memberships.length ? (
-              <p style={{ margin: 0, opacity: 0.8 }}>You don’t have access to any boards yet.</p>
+              <div className={styles.emptyState}>
+                <div className={styles.emptyStateIcon}>📋</div>
+                <p>You don't have any boards yet.</p>
+                <p>Create your first board above to get started!</p>
+              </div>
             ) : (
               <DashboardBoardsClient memberships={memberships} currentUserId={user.id} currentUserRole={user.role} />
             )}
           </section>
 
+          {/* User info section */}
           <div className={styles.info}>
             <p>
-              <strong>User ID:</strong> {user.id}
+              <strong>User ID:</strong> <span>{user.id}</span>
             </p>
             <p>
-              <strong>Email:</strong> {user.email}
+              <strong>Email:</strong> <span>{user.email}</span>
             </p>
             <p>
-              <strong>Role:</strong> {user.role}
+              <strong>Role:</strong> <span>{user.role}</span>
             </p>
             <p>
-              <strong>Member since:</strong> {new Date(user.createdAt).toLocaleDateString()}
+              <strong>Member since:</strong> <span>{new Date(user.createdAt).toLocaleDateString()}</span>
             </p>
           </div>
         </div>
