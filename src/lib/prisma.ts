@@ -9,7 +9,8 @@ const globalForPrisma = globalThis as unknown as {
 // Keep this aligned with prisma/prisma.config.ts so the CLI (migrate/push/studio)
 // and the runtime client point at the same SQLite file.
 // Prisma config default: file:./prisma/prisma/dev.db
-const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/prisma/dev.db';
+// const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/prisma/dev.db';
+const databaseUrl = 'file:./prisma/prisma/dev.db';
 const sqlitePath = databaseUrl.replace(/^file:/, '');
 
 
