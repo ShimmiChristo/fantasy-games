@@ -26,13 +26,15 @@ export default async function PropsPage({
     return <PropsClient user={user} />;
   }
 
+  // No boardId in the URL. Choose a default board for this user.
+  // Anonymous users can't have memberships; keep existing client behavior.
   if (!user) {
     return <PropsClient user={user} />;
   }
 
   const boardMemberDelegate = getBoardMemberDelegate(prisma);
   const membership = (await boardMemberDelegate.findFirst({
-    where: { userId: user.id },
+    where: { userId: user.id, board: { type: 'PROPS' } },
     orderBy: [{ board: { createdAt: 'desc' } }, { createdAt: 'desc' }],
     select: { boardId: true },
   })) as unknown as { boardId: string } | null;
@@ -44,7 +46,7 @@ export default async function PropsPage({
   return (
     <main style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
       <h1>Super Bowl Prop Bets</h1>
-      <p>You don’t have access to any boards yet.</p>
+      <p>You don't have access to any prop boards yet.</p>
       <p>Use an invite link from an admin to join a board.</p>
     </main>
   );

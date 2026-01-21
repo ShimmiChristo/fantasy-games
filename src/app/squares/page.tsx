@@ -36,7 +36,7 @@ export default async function SquaresPage({
   const boardMemberDelegate = getBoardMemberDelegate(prisma);
 
   const membership = (await boardMemberDelegate.findFirst({
-    where: { userId: user.id },
+    where: { userId: user.id, board: { type: 'SQUARES' } },
     orderBy: [{ board: { createdAt: 'desc' } }, { createdAt: 'desc' }],
     select: { boardId: true },
   })) as unknown as { boardId: string } | null;
@@ -48,7 +48,7 @@ export default async function SquaresPage({
   return (
     <main style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
       <h1>Super Bowl Squares</h1>
-      <p>You don’t have access to any boards yet.</p>
+      <p>You don't have access to any squares boards yet.</p>
       <p>Use an invite link from an admin to join a board.</p>
     </main>
   );

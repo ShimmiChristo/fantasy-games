@@ -40,6 +40,10 @@ model Board {
   createdByUserId    String
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+
+  /// Board type: 'SQUARES' for grid-based pools, 'PROPS' for prop bets
+  type               BoardType     @default(SQUARES)
+
   /// If false, the board cannot be edited regardless of lock time.
   isEditable         Boolean       @default(true)
   /// If set and in the past, the board is no longer editable.
@@ -55,6 +59,7 @@ model Board {
   squares            Square[]
 
   @@index([createdByUserId])
+  @@index([type])
 }
 
 model BoardMember {
@@ -153,4 +158,9 @@ enum BoardRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum BoardType {
+  SQUARES
+  PROPS
 }

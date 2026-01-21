@@ -38,12 +38,19 @@ type Membership = {
   board: {
     id: string;
     name: string;
+    type: 'SQUARES' | 'PROPS';
     createdAt: string | Date;
     createdByUserId: string;
     isEditable: boolean;
     editableUntil: string | Date | null;
     maxSquaresPerEmail?: number | null;
   };
+};
+
+type Prop = {
+  id: string;
+  question: string;
+  options: { id: string; label: string }[];
 };
 
 export default function DashboardBoardsClient({
@@ -58,6 +65,20 @@ export default function DashboardBoardsClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errorById, setErrorById] = useState<Record<string, string | null>>({});
   const [limitById, setLimitById] = useState<Record<string, string>>({});
+
+  // Prop management state
+  const [propsByBoardId, setPropsByBoardId] = useState<Record<string, Prop[]>>({});
+  const [loadingPropsForBoard, setLoadingPropsForBoard] = useState<Record<string, boolean>>({});
+  const [showPropsForBoard, setShowPropsForBoard] = useState<Record<string, boolean>>({});
+
+  // New prop creation
+  const [newPropQuestion, setNewPropQuestion] = useState<Record<string, string>>({});
+  const [newPropAnswers, setNewPropAnswers] = useState<Record<string, string>>({});
+
+  // Edit existing prop
+  const [editingPropId, setEditingPropId] = useState<string | null>(null);
+  const [editPropQuestion, setEditPropQuestion] = useState('');
+  const [editPropAnswers, setEditPropAnswers] = useState('');
 
   const initialLimitById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -258,6 +279,138 @@ export default function DashboardBoardsClient({
     }
   }
 
+  async function loadProps(boardId: string) {
+    setLoadingPropsForBoard((prev) => ({ ...prev, [boardId]: true }));
+    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+
+    try {
+      const res = await fetch(`/api/props?boardId=${encodeURIComponent(boardId)}`);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || 'Failed to load props' }));
+        return;
+      }
+
+      setPropsByBoardId((prev) => ({ ...prev, [boardId]: data?.props || [] }));
+    } catch (e) {
+      setErrorById((prev) => ({ ...prev, [boardId]: e instanceof Error ? e.message : 'Failed to load props' }));
+    } finally {
+      setLoadingPropsForBoard((prev) => ({ ...prev, [boardId]: false }));
+    }
+  }
+
+  async function createProp(boardId: string) {
+    const question = (newPropQuestion[boardId] || '').trim();
+    const answersRaw = (newPropAnswers[boardId] || '').trim();
+
+    if (!question) {
+      setErrorById((prev) => ({ ...prev, [boardId]: 'Prop question is required' }));
+      return;
+    }
+
+    const answers = answersRaw.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (answers.length < 2) {
+      setErrorById((prev) => ({ ...prev, [boardId]: 'Provide at least 2 answers (one per line)' }));
+      return;
+    }
+
+    setBusyId(boardId);
+    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, answers }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || 'Failed to create prop' }));
+        return;
+      }
+
+      // Clear form
+      setNewPropQuestion((prev) => ({ ...prev, [boardId]: '' }));
+      setNewPropAnswers((prev) => ({ ...prev, [boardId]: '' }));
+
+      // Reload props
+      await loadProps(boardId);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function updateProp(boardId: string, propId: string) {
+    const question = editPropQuestion.trim();
+    const answersRaw = editPropAnswers.trim();
+
+    if (!question) {
+      setErrorById((prev) => ({ ...prev, [boardId]: 'Prop question is required' }));
+      return;
+    }
+
+    const answers = answersRaw.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (answers.length < 2) {
+      setErrorById((prev) => ({ ...prev, [boardId]: 'Provide at least 2 answers (one per line)' }));
+      return;
+    }
+
+    setBusyId(boardId);
+    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propId, question, answers }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || 'Failed to update prop' }));
+        return;
+      }
+
+      // Clear edit state
+      setEditingPropId(null);
+      setEditPropQuestion('');
+      setEditPropAnswers('');
+
+      // Reload props
+      await loadProps(boardId);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deleteProp(boardId: string, propId: string) {
+    if (!confirm('Delete this prop? This will also delete all user picks for this prop.')) return;
+
+    setBusyId(boardId);
+    setErrorById((prev) => ({ ...prev, [boardId]: null }));
+
+    try {
+      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propId }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErrorById((prev) => ({ ...prev, [boardId]: data?.error || 'Failed to delete prop' }));
+        return;
+      }
+
+      // Reload props
+      await loadProps(boardId);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <ul style={{ margin: 0, paddingLeft: 18 }}>
       {memberships.map((m) => {
@@ -284,7 +437,7 @@ export default function DashboardBoardsClient({
           <li key={m.board.id} style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <a
-                href={`/squares?boardId=${encodeURIComponent(m.board.id)}`}
+                href={`/${m.board.type === 'PROPS' ? 'props' : 'squares'}?boardId=${encodeURIComponent(m.board.id)}`}
                 onClick={() => {
                   if (locked) {
                     setErrorById((prev) => ({
@@ -299,7 +452,7 @@ export default function DashboardBoardsClient({
                   ...((locked ? { opacity: 0.75 } : undefined) as React.CSSProperties | undefined),
                 }}
               >
-                {m.board.name}
+                {m.board.name} <span style={{ fontSize: 12, opacity: 0.6 }}>({m.board.type === 'PROPS' ? 'Props' : 'Squares'})</span>
               </a>
 
               <span style={{ fontSize: 12, opacity: 0.75 }}>
@@ -345,7 +498,7 @@ export default function DashboardBoardsClient({
               </div>
             ) : null}
 
-            {canManageBoard ? (
+            {canManageBoard && m.board.type === 'SQUARES' ? (
               <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 12, opacity: 0.8 }}>Max squares / email</span>
@@ -473,6 +626,192 @@ export default function DashboardBoardsClient({
                 >
                   Clear timer
                 </button>
+              </div>
+            ) : null}
+
+            {/* Prop Bets Management */}
+            {canManageBoard && m.board.type === 'PROPS' ? (
+              <div style={{ marginTop: 12, padding: 12, border: '1px solid rgba(148,163,184,0.25)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Prop Bets</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const shouldShow = !showPropsForBoard[m.board.id];
+                      setShowPropsForBoard((prev) => ({ ...prev, [m.board.id]: shouldShow }));
+                      if (shouldShow && !propsByBoardId[m.board.id]) {
+                        void loadProps(m.board.id);
+                      }
+                    }}
+                    disabled={busyId === m.board.id}
+                    style={{ fontSize: 12 }}
+                  >
+                    {showPropsForBoard[m.board.id] ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+
+                {showPropsForBoard[m.board.id] ? (
+                  <div>
+                    {loadingPropsForBoard[m.board.id] ? (
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>Loading props...</div>
+                    ) : (
+                      <>
+                        {/* Existing props */}
+                        {propsByBoardId[m.board.id]?.length ? (
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+                              {propsByBoardId[m.board.id].length} prop(s)
+                            </div>
+                            {propsByBoardId[m.board.id].map((prop, idx) => (
+                              <div
+                                key={prop.id}
+                                style={{
+                                  marginBottom: 8,
+                                  padding: 8,
+                                  border: '1px solid rgba(148,163,184,0.2)',
+                                  borderRadius: 6,
+                                  background: editingPropId === prop.id ? 'rgba(59,130,246,0.05)' : 'transparent',
+                                }}
+                              >
+                                {editingPropId === prop.id ? (
+                                  <>
+                                    <div style={{ marginBottom: 8 }}>
+                                      <label style={{ display: 'block', fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                                        Question
+                                      </label>
+                                      <input
+                                        value={editPropQuestion}
+                                        onChange={(e) => setEditPropQuestion(e.target.value)}
+                                        style={{ width: '100%' }}
+                                        disabled={busyId === m.board.id}
+                                      />
+                                    </div>
+                                    <div style={{ marginBottom: 8 }}>
+                                      <label style={{ display: 'block', fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                                        Answers (one per line)
+                                      </label>
+                                      <textarea
+                                        value={editPropAnswers}
+                                        onChange={(e) => setEditPropAnswers(e.target.value)}
+                                        rows={4}
+                                        style={{ width: '100%' }}
+                                        disabled={busyId === m.board.id}
+                                      />
+                                      <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                                        Note: answers cannot be changed after users have made picks
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => void updateProp(m.board.id, prop.id)}
+                                        disabled={busyId === m.board.id}
+                                        style={{ fontSize: 12 }}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingPropId(null);
+                                          setEditPropQuestion('');
+                                          setEditPropAnswers('');
+                                        }}
+                                        disabled={busyId === m.board.id}
+                                        style={{ fontSize: 12 }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                                          {idx + 1}. {prop.question}
+                                        </div>
+                                        <div style={{ fontSize: 12, opacity: 0.75 }}>
+                                          {prop.options.map((o) => o.label).join(' • ')}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingPropId(prop.id);
+                                            setEditPropQuestion(prop.question);
+                                            setEditPropAnswers(prop.options.map((o) => o.label).join('\n'));
+                                          }}
+                                          disabled={busyId === m.board.id}
+                                          style={{ fontSize: 12 }}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void deleteProp(m.board.id, prop.id)}
+                                          disabled={busyId === m.board.id}
+                                          style={{ fontSize: 12 }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>No props yet</div>
+                        )}
+
+                        {/* Create new prop */}
+                        <div style={{ padding: 8, background: 'rgba(148,163,184,0.05)', borderRadius: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Create new prop</div>
+                          <div style={{ marginBottom: 8 }}>
+                            <label style={{ display: 'block', fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                              Question
+                            </label>
+                            <input
+                              value={newPropQuestion[m.board.id] || ''}
+                              onChange={(e) =>
+                                setNewPropQuestion((prev) => ({ ...prev, [m.board.id]: e.target.value }))
+                              }
+                              placeholder="e.g. Who will win MVP?"
+                              style={{ width: '100%' }}
+                              disabled={busyId === m.board.id}
+                            />
+                          </div>
+                          <div style={{ marginBottom: 8 }}>
+                            <label style={{ display: 'block', fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                              Answers (one per line)
+                            </label>
+                            <textarea
+                              value={newPropAnswers[m.board.id] || ''}
+                              onChange={(e) =>
+                                setNewPropAnswers((prev) => ({ ...prev, [m.board.id]: e.target.value }))
+                              }
+                              placeholder="Patrick Mahomes&#10;Jalen Hurts&#10;Other"
+                              rows={4}
+                              style={{ width: '100%' }}
+                              disabled={busyId === m.board.id}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void createProp(m.board.id)}
+                            disabled={busyId === m.board.id}
+                            style={{ fontSize: 12 }}
+                          >
+                            Create Prop
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

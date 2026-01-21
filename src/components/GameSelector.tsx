@@ -13,7 +13,7 @@ type GameOption = {
 
 const GAME_OPTIONS: GameOption[] = [
   { id: 'super-bowl-squares', name: 'Super Bowl Squares', href: '/squares' },
-  { id: 'super-bowl-prop-bets', name: 'Super Bowl Prop Bets', href: '/props' },
+  { id: 'super-bowl-props', name: 'Super Bowl Props', href: '/props' },
 ];
 
 function getInitialSelectedGame(): string {

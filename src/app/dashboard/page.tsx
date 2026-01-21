@@ -24,14 +24,21 @@ export default async function DashboardPage() {
     const authedUser = await requireAuth();
 
     const name = String(formData.get('name') || '').trim();
+    const type = String(formData.get('type') || 'SQUARES').trim() as 'SQUARES' | 'PROPS';
+
     if (!name) {
       redirect('/dashboard?createBoard=missingName');
+    }
+
+    if (type !== 'SQUARES' && type !== 'PROPS') {
+      redirect('/dashboard?createBoard=invalidType');
     }
 
     try {
       await prisma.board.create({
         data: {
           name,
+          type,
           createdByUserId: authedUser.id,
           members: {
             create: {
@@ -60,6 +67,7 @@ export default async function DashboardPage() {
         select: {
           id: true,
           name: true,
+          type: true,
           createdAt: true,
           createdByUserId: true,
           isEditable: true,
@@ -73,6 +81,7 @@ export default async function DashboardPage() {
     board: {
       id: string;
       name: string;
+      type: 'SQUARES' | 'PROPS';
       createdAt: Date;
       createdByUserId: string;
       isEditable: boolean;
@@ -96,6 +105,10 @@ export default async function DashboardPage() {
             <h2 style={{ margin: '0 0 10px' }}>Create a board</h2>
             <form action={createBoardAction} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input name="name" placeholder="Board name" />
+              <select name="type" defaultValue="SQUARES" style={{ padding: '8px 12px' }}>
+                <option value="SQUARES">Squares</option>
+                <option value="PROPS">Props</option>
+              </select>
               <button type="submit">Create</button>
             </form>
           </section>
