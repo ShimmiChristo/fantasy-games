@@ -619,6 +619,109 @@ export default function DashboardBoardsClient({
 
             {canManageBoard && m.board.type === 'PROPS' ? (
               <div className={styles.propsSection}>
+                <div className={styles.controls}>
+                  <div className={styles.controlRow}>
+                    <label className={styles.controlLabel}>
+                      <span>Board Name</span>
+                      <input
+                        type="text"
+                        value={nameById[m.board.id] ?? ''}
+                        onChange={(e) => setNameById((prev) => ({ ...prev, [m.board.id]: e.target.value }))}
+                        disabled={!canManageBoard || busyId === m.board.id}
+                        className={styles.formInput}
+                        style={{ minWidth: '220px' }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = (nameById[m.board.id] || '').trim();
+                        if (!name) {
+                          setErrorById((prev) => ({ ...prev, [m.board.id]: 'Name is required' }));
+                          return;
+                        }
+                        void updateBoard(m.board.id, { name });
+                      }}
+                      disabled={disableRename}
+                      className={styles.button}
+                      title={locked ? 'Board is locked; rename is disabled' : 'Rename board'}
+                    >
+                      Rename
+                    </button>
+                  </div>
+
+                  <div className={styles.controlRow}>
+                    <label className={styles.controlLabel}>
+                      <input
+                        type="checkbox"
+                        checked={isEditableById[m.board.id] ?? !!m.board.isEditable}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setIsEditableById((prev) => ({ ...prev, [m.board.id]: next }));
+
+                          if (!next) {
+                            setLockAtById((prev) => ({ ...prev, [m.board.id]: '' }));
+                          }
+
+                          const patch = next ? { isEditable: true } : ({ isEditable: false, editableUntil: null } as const);
+                          void updateBoard(m.board.id, patch);
+                        }}
+                        disabled={!canManageBoard || busyId === m.board.id}
+                      />
+                      <span>Allow editing</span>
+                    </label>
+
+                    <label className={styles.controlLabel}>
+                      <span>Lock at</span>
+                      <input
+                        type="datetime-local"
+                        value={lockAtById[m.board.id] ?? ''}
+                        onChange={(e) => setLockAtById((prev) => ({ ...prev, [m.board.id]: e.target.value }))}
+                        disabled={!canManageBoard || busyId === m.board.id}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = (lockAtById[m.board.id] || '').trim();
+                        if (!v) {
+                          setErrorById((prev) => ({ ...prev, [m.board.id]: 'Pick a lock date/time or use Clear timer' }));
+                          return;
+                        }
+
+                        const d = fromDateTimeLocalValue(v);
+                        if (!d) {
+                          setErrorById((prev) => ({ ...prev, [m.board.id]: 'Invalid lock date/time' }));
+                          return;
+                        }
+
+                        if (d.getTime() <= Date.now()) {
+                          setErrorById((prev) => ({ ...prev, [m.board.id]: 'Lock time must be in the future' }));
+                          return;
+                        }
+
+                        void updateBoard(m.board.id, { editableUntil: d.toISOString() });
+                      }}
+                      disabled={!canManageBoard || busyId === m.board.id}
+                      className={styles.button}
+                      title="Set when this board becomes non-editable"
+                    >
+                      Set Timer
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void updateBoard(m.board.id, { editableUntil: null })}
+                      disabled={!canManageBoard || busyId === m.board.id}
+                      className={styles.button}
+                      title="Remove time-based lock"
+                    >
+                      Clear Timer
+                    </button>
+                  </div>
+                </div>
+
                 <div className={styles.propsSectionHeader}>
                   <h3 className={styles.propsSectionTitle}>🎯 Prop Bets Management</h3>
                   <button
