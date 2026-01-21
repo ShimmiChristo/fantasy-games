@@ -40,13 +40,6 @@ type ApiBoardInvite = {
   expiresAt: string | Date;
 };
 
-type AdminPick = {
-  propId: string;
-  optionId: string;
-  updatedAt: string | Date;
-  user: { id: string; email: string; firstName?: string | null; lastName?: string | null };
-};
-
 function parseDate(value: string | Date | null | undefined): Date | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
@@ -71,14 +64,6 @@ function displayName(u: { email: string; firstName?: string | null; lastName?: s
   return u.email;
 }
 
-function fromTextAreaAnswers(raw: string): string[] {
-  return raw
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 50);
-}
-
 export default function PropsClient({ user }: { user: SessionUser }) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [boardIdReady, setBoardIdReady] = useState(false);
@@ -93,7 +78,6 @@ export default function PropsClient({ user }: { user: SessionUser }) {
   const [board, setBoard] = useState<ApiBoard>(null);
   const [props, setProps] = useState<ApiProp[]>([]);
   const [myPicks, setMyPicks] = useState<ApiMyPick[] | null>(null);
-  const [adminPicks, setAdminPicks] = useState<AdminPick[] | null>(null);
 
   const [members, setMembers] = useState<ApiBoardMember[] | null>(null);
   const [invites, setInvites] = useState<ApiBoardInvite[] | null>(null);
@@ -133,14 +117,12 @@ export default function PropsClient({ user }: { user: SessionUser }) {
   }, [myPicks]);
 
   const showRoster = (members && members.length > 0) || (invites && invites.length > 0);
-  const canInvite = !!(boardId && (members !== null || invites !== null));
 
   async function load() {
     if (!boardId) {
       setBoard(null);
       setProps([]);
       setMyPicks(null);
-      setAdminPicks(null);
       setMembers(null);
       setInvites(null);
       setLoading(false);
@@ -158,7 +140,6 @@ export default function PropsClient({ user }: { user: SessionUser }) {
       setBoard((data?.board || null) as ApiBoard);
       setProps((data?.props || []) as ApiProp[]);
       setMyPicks((data?.myPicks || null) as ApiMyPick[] | null);
-      setAdminPicks((data?.picks || null) as AdminPick[] | null);
       setMembers((data?.members || null) as ApiBoardMember[] | null);
       setInvites((data?.invites || null) as ApiBoardInvite[] | null);
     } catch (e) {
@@ -232,100 +213,6 @@ export default function PropsClient({ user }: { user: SessionUser }) {
     }
   }
 
-  // Owner/admin prop management UI
-  const [newQuestion, setNewQuestion] = useState('');
-  const [newAnswersRaw, setNewAnswersRaw] = useState('Yes\nNo');
-
-  async function createProp() {
-    if (!boardId) return;
-    setBusy(true);
-    setError(null);
-
-    try {
-      const question = newQuestion.trim();
-      const answers = fromTextAreaAnswers(newAnswersRaw);
-      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, answers }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Unable to create prop');
-      setNewQuestion('');
-      setNewAnswersRaw('Yes\nNo');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to create prop');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteProp(propId: string) {
-    if (!boardId) return;
-    if (!confirm('Delete this prop?')) return;
-
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propId }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Unable to delete prop');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to delete prop');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function updateProp(propId: string, question: string, answersRaw: string) {
-    if (!boardId) return;
-
-    setBusy(true);
-    setError(null);
-    try {
-      const q = question.trim();
-      const answers = fromTextAreaAnswers(answersRaw);
-      const res = await fetch(`/api/admin/boards/${encodeURIComponent(boardId)}/props`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propId, question: q, answers }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Unable to update prop');
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to update prop');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Local edit buffers per prop
-  const [editQuestionById, setEditQuestionById] = useState<Record<string, string>>({});
-  const [editAnswersById, setEditAnswersById] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    // Initialize edit buffers when props load
-    const q: Record<string, string> = {};
-    const a: Record<string, string> = {};
-    for (const p of props) {
-      q[p.id] = q[p.id] ?? p.question;
-      a[p.id] = a[p.id] ?? p.options.map((o) => o.label).join('\n');
-      // keep existing typed values if already present
-      if (editQuestionById[p.id] !== undefined) q[p.id] = editQuestionById[p.id];
-      if (editAnswersById[p.id] !== undefined) a[p.id] = editAnswersById[p.id];
-    }
-    setEditQuestionById((prev) => ({ ...q, ...prev }));
-    setEditAnswersById((prev) => ({ ...a, ...prev }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.length]);
-
   return (
     <main className={styles.container}>
       <header className={styles.header}>
@@ -381,7 +268,7 @@ export default function PropsClient({ user }: { user: SessionUser }) {
       {loading ? <div className={styles.loading}>Loading props…</div> : null}
 
       {!loading && props.length === 0 ? (
-        <p className={styles.subtitle}>No props yet. An owner can create them below.</p>
+        <p className={styles.subtitle}>No props yet. Board owners can create them on the Dashboard.</p>
       ) : null}
 
       {!loading && props.length ? (
@@ -444,154 +331,62 @@ export default function PropsClient({ user }: { user: SessionUser }) {
         </section>
       ) : null}
 
-      {/* Admin prop management (only if roster info present like Squares) */}
-      {canInvite ? (
-        <section style={{ marginTop: 18 }} aria-label="Prop management">
-          <h2 style={{ fontSize: 14, margin: '0 0 8px', opacity: 0.9 }}>Manage props</h2>
-
-          <div style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: 12, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Create prop</div>
-            <label style={{ display: 'block', marginBottom: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Question</div>
-              <input value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)} style={{ width: '100%' }} />
-            </label>
-            <label style={{ display: 'block', marginBottom: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Answers (one per line)</div>
-              <textarea
-                value={newAnswersRaw}
-                onChange={(e) => setNewAnswersRaw(e.target.value)}
-                rows={4}
-                style={{ width: '100%' }}
-              />
-            </label>
-            <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void createProp()}>
-              Create
-            </button>
-          </div>
-
-          {props.map((p) => (
-            <div key={`edit-${p.id}`} style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ fontWeight: 700 }}>Edit prop</div>
-                <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void deleteProp(p.id)}>
-                  Delete
-                </button>
-              </div>
-
-              <label style={{ display: 'block', marginTop: 8 }}>
-                <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Question</div>
-                <input
-                  value={editQuestionById[p.id] ?? p.question}
-                  onChange={(e) => setEditQuestionById((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                  style={{ width: '100%' }}
-                />
-              </label>
-
-              <label style={{ display: 'block', marginTop: 8 }}>
-                <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Answers (one per line)</div>
-                <textarea
-                  value={editAnswersById[p.id] ?? p.options.map((o) => o.label).join('\n')}
-                  onChange={(e) => setEditAnswersById((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                  rows={4}
-                  style={{ width: '100%' }}
-                />
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                  Note: answers cannot be edited after users have made picks.
-                </div>
-              </label>
-
-              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={busy}
-                  onClick={() => void updateProp(p.id, editQuestionById[p.id] ?? p.question, editAnswersById[p.id] ?? p.options.map((o) => o.label).join('\n'))}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* Optional admin pick visibility */}
-          {adminPicks ? (
-            <div style={{ marginTop: 16 }}>
-              <h3 style={{ fontSize: 13, margin: '0 0 8px', opacity: 0.9 }}>All picks (admin)</h3>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
-                {adminPicks.length} selection(s)
-              </div>
+      {/* Roster info (read-only) */}
+      {showRoster ? (
+        <section style={{ marginTop: 18 }} aria-label="Board roster">
+          <h2 style={{ fontSize: 14, margin: '0 0 8px', opacity: 0.9 }}>Board users</h2>
+          {members && members.length ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Members</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {adminPicks.slice(0, 200).map((p, idx) => (
-                  <li key={`${p.user.id}:${p.propId}:${idx}`} style={{ marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600 }}>{displayName(p.user)}</span>{' '}
-                    <span style={{ fontSize: 12, opacity: 0.75 }}>picked {p.optionId}</span>
+                {members.map((m) => (
+                  <li key={m.user.id} style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600 }}>{displayName(m.user)}</span>{' '}
+                    <span style={{ fontSize: 12, opacity: 0.75 }}>({m.user.email})</span>{' '}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: 'rgba(148,163,184,0.18)',
+                        marginLeft: 8,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      {m.role}
+                    </span>
                   </li>
                 ))}
-                {adminPicks.length > 200 ? <li>…</li> : null}
               </ul>
             </div>
           ) : null}
 
-          {/* Roster + invites are handled by /api/props and reused elsewhere; keep display consistent */}
-          {showRoster ? (
-            <div style={{ marginTop: 16 }}>
-              <h3 style={{ fontSize: 13, margin: '0 0 8px', opacity: 0.9 }}>Board users</h3>
-              {members && members.length ? (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Members</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {members.map((m) => (
-                      <li key={m.user.id} style={{ marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600 }}>{displayName(m.user)}</span>{' '}
-                        <span style={{ fontSize: 12, opacity: 0.75 }}>({m.user.email})</span>{' '}
-                        <span
-                          style={{
-                            fontSize: 11,
-                            padding: '2px 8px',
-                            borderRadius: 999,
-                            background: 'rgba(148,163,184,0.18)',
-                            marginLeft: 8,
-                            textTransform: 'uppercase',
-                            letterSpacing: 0.4,
-                          }}
-                        >
-                          {m.role}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {invites && invites.length ? (
-                <div>
-                  <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Pending invites</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {invites.map((i) => {
-                      const exp = parseDate(i.expiresAt);
-                      return (
-                        <li key={i.id} style={{ marginBottom: 6 }}>
-                          <span style={{ fontWeight: 600 }}>{i.email}</span>{' '}
-                          <span style={{ fontSize: 12, opacity: 0.75 }}>(expires {exp ? exp.toLocaleString() : '—'})</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ) : null}
+          {invites && invites.length ? (
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Pending invites</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {invites.map((i) => {
+                  const exp = parseDate(i.expiresAt);
+                  return (
+                    <li key={i.id} style={{ marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600 }}>{i.email}</span>{' '}
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>(expires {exp ? exp.toLocaleString() : '—'})</span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ) : null}
         </section>
       ) : null}
 
-      {/* Invite management: Props API returns roster info; reusing invite panel from Squares would be ideal, but keep minimal here. */}
-      {canInvite ? (
-        <section style={{ marginTop: 18 }} aria-label="Invites">
-          <p className={styles.subtitle}>
-            To invite users, use the Squares page invite panel (shared board invites).
-          </p>
-        </section>
-      ) : null}
+      {/* Note about managing props */}
+      <section style={{ marginTop: 18, padding: 12, background: 'rgba(148,163,184,0.08)', borderRadius: 8 }}>
+        <p style={{ margin: 0, fontSize: 13, opacity: 0.85 }}>
+          <strong>Note:</strong> Props can be created and managed by board owners on the <a href="/dashboard">Dashboard</a>.
+        </p>
+      </section>
     </main>
   );
 }
