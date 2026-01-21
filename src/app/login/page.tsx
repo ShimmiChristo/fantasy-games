@@ -33,6 +33,7 @@ export default function LoginPage() {
 
       // Redirect to /profile on success
       router.push('/profile');
+      router.refresh(); // Refresh server components to update auth state
     } catch (err) {
       setError('An error occurred. Please try again.');
       setLoading(false);

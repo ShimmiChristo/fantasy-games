@@ -18,7 +18,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        {user ? <MainNav isAuthed /> : null}
+        {user && <MainNav isAuthed />}
         {children}
       </body>
     </html>
