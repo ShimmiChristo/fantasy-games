@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import styles from '../squares/page.module.css';
+import styles from './page.module.css';
 
 type SessionUser = {
   id: string;
@@ -216,114 +216,117 @@ export default function PropsClient({ user }: { user: SessionUser }) {
   return (
     <main className={styles.container}>
       <header className={styles.header}>
-        <div>
+        <div className={styles.headerContent}>
           <h1 className={styles.title}>Super Bowl Prop Bets</h1>
           {board?.name ? (
-            <div className={styles.subtitle}>
-              Board: <strong>{board.name}</strong>{' '}
-              {lockLabel ? (
-                <span
-                  style={{
-                    marginLeft: 10,
-                    fontSize: 12,
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    background: boardEditState.locked ? 'rgba(220,38,38,0.12)' : 'rgba(34,197,94,0.12)',
-                    color: boardEditState.locked ? 'rgb(185,28,28)' : 'rgb(21,128,61)',
-                  }}
-                  title={
-                    boardEditState.editableUntil
-                      ? `Editable until ${boardEditState.editableUntil.toLocaleString()}`
-                      : boardEditState.locked
-                        ? 'Board editing is disabled'
-                        : 'Board is editable'
-                  }
-                >
-                  {lockLabel}
-                </span>
+            <>
+              <div className={styles.boardName}>
+                <span className={styles.boardNameLabel}>Board:</span>
+                <span className={styles.boardNameValue}>{board.name}</span>
+                {lockLabel ? (
+                  <span
+                    className={`${styles.lockBadge} ${boardEditState.locked ? styles.lockBadgeLocked : styles.lockBadgeUnlocked}`}
+                    title={
+                      boardEditState.editableUntil
+                        ? `Editable until ${boardEditState.editableUntil.toLocaleString()}`
+                        : boardEditState.locked
+                          ? 'Board editing is disabled'
+                          : 'Board is editable'
+                    }
+                  >
+                    {boardEditState.locked ? '🔒' : '🔓'} {lockLabel}
+                  </span>
+                ) : null}
+              </div>
+              {board && boardEditState.locked && user?.role !== 'ADMIN' ? (
+                <p className={styles.lockWarning}>
+                  ⚠️ Board is locked. Changing selections is disabled.
+                </p>
               ) : null}
-            </div>
-          ) : null}
-          {board && boardEditState.locked && user?.role !== 'ADMIN' ? (
-            <p className={styles.subtitle} style={{ color: 'rgb(185,28,28)' }}>
-              Board is locked. Changing selections is disabled.
-            </p>
+            </>
           ) : null}
         </div>
 
         <div className={styles.meta}>
           {user ? (
             <div className={styles.signedIn}>
-              <div className={styles.signedInLabel}>Signed in</div>
+              <div className={styles.signedInLabel}>Signed in as</div>
               <div className={styles.signedInValue}>{user.email}</div>
             </div>
           ) : (
-            <div className={styles.signedOut}>Sign in to make selections.</div>
+            <div className={styles.signedOut}>🔐 Sign in to make selections</div>
           )}
         </div>
       </header>
 
-      {error ? <div className={styles.alert} role="alert">{error}</div> : null}
+      {error ? (
+        <div className={styles.alert} role="alert">
+          <span>⚠️</span>
+          <span>{error}</span>
+        </div>
+      ) : null}
 
       {loading ? <div className={styles.loading}>Loading props…</div> : null}
 
       {!loading && props.length === 0 ? (
-        <p className={styles.subtitle}>No props yet. Board owners can create them on the Dashboard.</p>
+        <div className={styles.emptyState}>
+          <div className={styles.emptyStateIcon}>🎯</div>
+          <div className={styles.emptyStateTitle}>No Props Available</div>
+          <p className={styles.emptyStateText}>No props have been created for this board yet.</p>
+          <p className={styles.emptyStateText}>Board owners can create them on the Dashboard.</p>
+        </div>
       ) : null}
 
       {!loading && props.length ? (
-        <section aria-label="Prop list" style={{ display: 'grid', gap: 12 }}>
+        <section aria-label="Prop list" className={styles.propsList}>
           {props.map((p, idx) => {
             const myPick = myPickByPropId.get(p.id);
             const lockedForUser = boardEditState.locked && user?.role !== 'ADMIN';
 
             return (
-              <div
-                key={p.id}
-                style={{
-                  border: '1px solid rgba(148,163,184,0.25)',
-                  borderRadius: 12,
-                  padding: 12,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ fontWeight: 700 }}>
-                    {idx + 1}. {p.question}
+              <div key={p.id} className={styles.propCard}>
+                <div className={styles.propHeader}>
+                  <div className={styles.propQuestion}>
+                    <span className={styles.propNumber}>{idx + 1}.</span>
+                    {p.question}
                   </div>
-                  {myPick ? (
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Selected</div>
-                  ) : (
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>No selection</div>
-                  )}
+                  <div className={`${styles.propStatus} ${myPick ? styles.propStatusSelected : styles.propStatusEmpty}`}>
+                    {myPick ? '✓ Selected' : '○ No selection'}
+                  </div>
                 </div>
 
-                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                <div className={styles.optionsList}>
                   {p.options.map((o) => {
                     const checked = myPick?.optionId === o.id;
+                    const disabled = !user || busy || lockedForUser;
                     return (
-                      <label key={o.id} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <label
+                        key={o.id}
+                        className={`${styles.optionLabel} ${checked ? styles.optionLabelSelected : ''} ${disabled ? styles.optionLabelDisabled : ''}`}
+                      >
                         <input
                           type="radio"
                           name={`prop-${p.id}`}
                           checked={checked}
-                          disabled={!user || busy || lockedForUser}
+                          disabled={disabled}
                           onChange={() => void setPick(p.id, o.id)}
+                          className={styles.optionInput}
                         />
-                        <span>{o.label}</span>
+                        <span className={styles.optionText}>{o.label}</span>
                       </label>
                     );
                   })}
+                </div>
 
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      disabled={!user || busy || !myPick || lockedForUser}
-                      onClick={() => void clearPick(p.id)}
-                    >
-                      Clear
-                    </button>
-                  </div>
+                <div className={styles.propActions}>
+                  <button
+                    type="button"
+                    className={styles.clearButton}
+                    disabled={!user || busy || !myPick || lockedForUser}
+                    onClick={() => void clearPick(p.id)}
+                  >
+                    Clear Selection
+                  </button>
                 </div>
               </div>
             );
@@ -333,29 +336,19 @@ export default function PropsClient({ user }: { user: SessionUser }) {
 
       {/* Roster info (read-only) */}
       {showRoster ? (
-        <section style={{ marginTop: 18 }} aria-label="Board roster">
-          <h2 style={{ fontSize: 14, margin: '0 0 8px', opacity: 0.9 }}>Board users</h2>
+        <section className={styles.rosterSection} aria-label="Board roster">
+          <h2 className={styles.rosterTitle}>👥 Board Participants</h2>
           {members && members.length ? (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Members</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <div className={styles.rosterGroup}>
+              <div className={styles.rosterGroupLabel}>Members</div>
+              <ul className={styles.rosterList}>
                 {members.map((m) => (
-                  <li key={m.user.id} style={{ marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600 }}>{displayName(m.user)}</span>{' '}
-                    <span style={{ fontSize: 12, opacity: 0.75 }}>({m.user.email})</span>{' '}
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        background: 'rgba(148,163,184,0.18)',
-                        marginLeft: 8,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {m.role}
+                  <li key={m.user.id} className={styles.rosterItem}>
+                    <span className={styles.rosterName}>
+                      {displayName(m.user)}
+                      <span className={styles.rosterEmail}>({m.user.email})</span>
                     </span>
+                    <span className={styles.rosterBadge}>{m.role}</span>
                   </li>
                 ))}
               </ul>
@@ -363,15 +356,17 @@ export default function PropsClient({ user }: { user: SessionUser }) {
           ) : null}
 
           {invites && invites.length ? (
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Pending invites</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <div className={styles.rosterGroup}>
+              <div className={styles.rosterGroupLabel}>Pending invites</div>
+              <ul className={styles.rosterList}>
                 {invites.map((i) => {
                   const exp = parseDate(i.expiresAt);
                   return (
-                    <li key={i.id} style={{ marginBottom: 6 }}>
-                      <span style={{ fontWeight: 600 }}>{i.email}</span>{' '}
-                      <span style={{ fontSize: 12, opacity: 0.75 }}>(expires {exp ? exp.toLocaleString() : '—'})</span>
+                    <li key={i.id} className={styles.rosterItem}>
+                      <span className={styles.rosterName}>
+                        {i.email}
+                        <span className={styles.rosterEmail}>(expires {exp ? exp.toLocaleString() : '—'})</span>
+                      </span>
                     </li>
                   );
                 })}
@@ -382,9 +377,10 @@ export default function PropsClient({ user }: { user: SessionUser }) {
       ) : null}
 
       {/* Note about managing props */}
-      <section style={{ marginTop: 18, padding: 12, background: 'rgba(148,163,184,0.08)', borderRadius: 8 }}>
-        <p style={{ margin: 0, fontSize: 13, opacity: 0.85 }}>
-          <strong>Note:</strong> Props can be created and managed by board owners on the <a href="/dashboard">Dashboard</a>.
+      <section className={styles.infoBox}>
+        <p>
+          <strong>💡 Note:</strong> Props can be created and managed by board owners on the{' '}
+          <a href="/dashboard">Dashboard</a>.
         </p>
       </section>
     </main>
