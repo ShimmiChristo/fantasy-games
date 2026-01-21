@@ -294,13 +294,9 @@ export default function DashboardBoardsClient({
                   }
                 }}
                 style={{
+                  textDecoration: 'underline',
+                  textUnderlineOffset: 2,
                   ...((locked ? { opacity: 0.75 } : undefined) as React.CSSProperties | undefined),
-                  ...((currentUserRole === 'ADMIN' || m.role === 'OWNER')
-                    ? {
-                        textDecoration: 'underline',
-                        textUnderlineOffset: 2,
-                      }
-                    : null),
                 }}
               >
                 {m.board.name}
