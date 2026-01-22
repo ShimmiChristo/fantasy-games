@@ -20,15 +20,27 @@ export default async function ProfilePage() {
           <LogoutButton />
         </div>
         <div className={styles.content}>
-          <p style={{ margin: '0 0 12px' }}>
-            <Link href="/dashboard">Back to dashboard</Link>
+          <p style={{ margin: '0 0 24px' }}>
+            <Link href="/dashboard">← Back to dashboard</Link>
           </p>
 
-          <GameSelector />
+          <div style={{ marginBottom: '32px' }}>
+            <GameSelector />
+          </div>
 
           <div className={styles.info}>
-            <p><strong>Email:</strong> {user.email}</p>
-            <p><strong>Account created:</strong> {new Date(user.createdAt).toLocaleDateString()}</p>
+            <p>
+              <strong>User ID:</strong> <span>{user.id}</span>
+            </p>
+            <p>
+              <strong>Email:</strong> <span>{user.email}</span>
+            </p>
+            <p>
+              <strong>Role:</strong> <span>{user.role}</span>
+            </p>
+            <p>
+              <strong>Member since:</strong> <span>{new Date(user.createdAt).toLocaleDateString()}</span>
+            </p>
           </div>
         </div>
       </div>

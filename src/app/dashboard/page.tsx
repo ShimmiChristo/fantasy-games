@@ -95,7 +95,12 @@ export default async function DashboardPage() {
       <div className={styles.card}>
         <div className={styles.header}>
           <h1 className={styles.title}>Dashboard</h1>
-          <LogoutButton />
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <Link href="/profile" style={{ padding: '0.5rem 1rem', textDecoration: 'none' }}>
+              Profile
+            </Link>
+            <LogoutButton />
+          </div>
         </div>
         <div className={styles.content}>
           <p className={styles.welcome}>Welcome back, {user.email}!</p>
@@ -136,22 +141,6 @@ export default async function DashboardPage() {
               <DashboardBoardsClient memberships={memberships} currentUserId={user.id} currentUserRole={user.role} />
             )}
           </section>
-
-          {/* User info section */}
-          <div className={styles.info}>
-            <p>
-              <strong>User ID:</strong> <span>{user.id}</span>
-            </p>
-            <p>
-              <strong>Email:</strong> <span>{user.email}</span>
-            </p>
-            <p>
-              <strong>Role:</strong> <span>{user.role}</span>
-            </p>
-            <p>
-              <strong>Member since:</strong> <span>{new Date(user.createdAt).toLocaleDateString()}</span>
-            </p>
-          </div>
         </div>
       </div>
     </div>
