@@ -50,33 +50,33 @@ export async function POST(req: Request) {
   const boardMemberDelegate = getBoardMemberDelegate(prisma);
   const squareDelegate = getSquareDelegate(prisma);
 
-  await prisma.$transaction(async () => {
-    // Mark invite used
-    await boardInviteDelegate.update({
-      where: { id: invite.id },
-      data: { usedAt: new Date() },
-    });
-
-    // Ensure membership exists. Invited users are non-admin members by default.
-    await boardMemberDelegate.upsert({
-      where: { boardId_userId: { boardId: invite.boardId, userId: user.id } },
-      create: { boardId: invite.boardId, userId: user.id, role: 'MEMBER' },
-      update: {},
-    });
-
-    // Ensure 10x10 grid exists for this board
-    const existing = await squareDelegate.count({ where: { boardId: invite.boardId } });
-    if (existing < 100) {
-      const data: { boardId: string; row: number; col: number }[] = [];
-      for (let row = 0; row < 10; row++) {
-        for (let col = 0; col < 10; col++) {
-          data.push({ boardId: invite.boardId, row, col });
-        }
-      }
-      // createMany is fine; unique constraint is boardId,row,col
-      await squareDelegate.createMany({ data });
-    }
+  // Mark invite used (no transaction needed - this is idempotent)
+  await boardInviteDelegate.update({
+    where: { id: invite.id },
+    data: { usedAt: new Date() },
   });
+
+  // Ensure membership exists. Invited users are non-admin members by default.
+  // This upsert is safe to run independently - it's idempotent.
+  await boardMemberDelegate.upsert({
+    where: { boardId_userId: { boardId: invite.boardId, userId: user.id } },
+    create: { boardId: invite.boardId, userId: user.id, role: 'MEMBER' },
+    update: {},
+  });
+
+  // Ensure 10x10 grid exists for this board
+  // This is safe because the unique constraint on (boardId, row, col) prevents duplicates
+  const existing = await squareDelegate.count({ where: { boardId: invite.boardId } });
+  if (existing < 100) {
+    const data: { boardId: string; row: number; col: number }[] = [];
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 10; col++) {
+        data.push({ boardId: invite.boardId, row, col });
+      }
+    }
+    // createMany is fine; unique constraint is boardId,row,col
+    await squareDelegate.createMany({ data });
+  }
 
   return NextResponse.json({ ok: true, boardId: invite.boardId }, { status: 200 });
 }
