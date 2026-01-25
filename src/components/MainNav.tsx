@@ -28,7 +28,7 @@ export default function MainNav({ isAuthed }: { isAuthed: boolean }) {
     <nav className={styles.nav} aria-label="Main">
       <div className={styles.inner}>
         <Link href="/" className={styles.brand}>
-          NextJS Auth App
+          Side Props
         </Link>
 
         <div className={styles.links}>
@@ -38,7 +38,9 @@ export default function MainNav({ isAuthed }: { isAuthed: boolean }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`${styles.link} ${active ? styles.active : ''} ${!clientAuthed ? styles.disabled : ''}`}
+                className={`${styles.link} ${active ? styles.active : ''} ${
+                  !clientAuthed ? styles.disabled : ''
+                }`}
                 aria-current={active ? 'page' : undefined}
                 tabIndex={!clientAuthed ? -1 : 0}
                 aria-disabled={!clientAuthed}
