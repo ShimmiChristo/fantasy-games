@@ -2,9 +2,7 @@ import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
   datasource: {
-      // Keep DATABASE_URL as the source of truth, but allow Prisma CLI to run even
-      // if the variable isn't loaded in the current process.
-      // Default DB for this repo: prisma/prisma/dev.db
-      url: 'file:./prisma/dev.db',
+    // url: 'file:./prisma/dev.db',
+    url: process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || 'postgresql://localhost:5432/sidepot',
   },
 });
