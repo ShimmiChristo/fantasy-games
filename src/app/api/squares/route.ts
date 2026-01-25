@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromSession } from '@/lib/auth';
-import { canEditBoardNow, requireBoardAdmin } from '@/lib/boards';
+import { requireBoardAdmin, requireBoardEditable } from '@/lib/boards';
 import type { PrismaClient } from '@prisma/client';
 
 function parseIntParam(value: unknown): number | null {
@@ -68,30 +68,6 @@ async function ensureGridExists(boardId: string) {
 
   // Prefer createMany for sqlite speed; unique constraint prevents duplicates across same board
   await squareDelegate.createMany({ data } as unknown);
-}
-
-async function requireBoardEditable(boardId: string) {
-  const boardDelegate = getBoardDelegate(prisma);
-
-  const board = (await boardDelegate.findUnique({
-    where: { id: boardId },
-    select: { isEditable: true, editableUntil: true },
-  })) as unknown as { isEditable: boolean; editableUntil: Date | null } | null;
-
-  if (!board) {
-    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
-  }
-
-  if (
-    !canEditBoardNow({
-      isEditable: board.isEditable,
-      editableUntil: board.editableUntil,
-    })
-  ) {
-    return NextResponse.json({ error: 'Board is not editable' }, { status: 409 });
-  }
-
-  return null;
 }
 
 export async function GET(req: Request) {

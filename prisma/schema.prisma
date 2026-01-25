@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,30 +6,20 @@ datasource db {
   provider = "sqlite"
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
-enum BoardRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
 model User {
   id            String        @id @default(cuid())
   email         String        @unique
   password      String
-  firstName     String?
-  lastName      String?
   role          Role          @default(USER)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  sessions      Session[]
-  squares       Square[]
+  firstName     String?
+  lastName      String?
   boardsCreated Board[]       @relation("BoardsCreated")
   boardMembers  BoardMember[]
+  propPicks     PropPick[]
+  sessions      Session[]
+  squares       Square[]
 }
 
 model Session {
@@ -48,28 +35,31 @@ model Session {
 }
 
 model Board {
-  id              String        @id @default(cuid())
-  name            String
-  createdByUserId String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                 String        @id @default(cuid())
+  name               String
+  createdByUserId    String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  /// Board type: 'SQUARES' for grid-based pools, 'PROPS' for prop bets
+  type               BoardType     @default(SQUARES)
 
   /// If false, the board cannot be edited regardless of lock time.
-  isEditable      Boolean       @default(true)
-
+  isEditable         Boolean       @default(true)
   /// If set and in the past, the board is no longer editable.
-  editableUntil   DateTime?
-
+  editableUntil      DateTime?
   /// Optional limit for how many squares one email/user can claim on this board.
   /// Null means unlimited.
   maxSquaresPerEmail Int?
-
-  createdBy User          @relation("BoardsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  members   BoardMember[]
-  invites   BoardInvite[]
-  squares   Square[]
+  createdBy          User          @relation("BoardsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  invites            BoardInvite[]
+  members            BoardMember[]
+  props              Prop[]
+  propPicks          PropPick[]
+  squares            Square[]
 
   @@index([createdByUserId])
+  @@index([type])
 }
 
 model BoardMember {
@@ -77,24 +67,22 @@ model BoardMember {
   userId    String
   role      BoardRole @default(MEMBER)
   createdAt DateTime  @default(now())
-
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   @@id([boardId, userId])
   @@index([userId])
 }
 
 model BoardInvite {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   boardId   String
   email     String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   @@index([boardId])
   @@index([email])
@@ -108,11 +96,71 @@ model Square {
   boardId   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@unique([boardId, row, col])
   @@index([userId])
   @@index([boardId])
+}
+
+model Prop {
+  id        String       @id @default(cuid())
+  boardId   String
+  question  String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  board     Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  options   PropOption[]
+  picks     PropPick[]
+
+  @@index([boardId])
+}
+
+model PropOption {
+  id        String     @id @default(cuid())
+  propId    String
+  label     String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  prop      Prop       @relation(fields: [propId], references: [id], onDelete: Cascade)
+  picks     PropPick[]
+
+  @@unique([propId, label])
+  @@index([propId])
+}
+
+model PropPick {
+  id        String     @id @default(cuid())
+  boardId   String
+  propId    String
+  optionId  String
+  userId    String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  option    PropOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  prop      Prop       @relation(fields: [propId], references: [id], onDelete: Cascade)
+  board     Board      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([propId, userId])
+  @@index([boardId])
+  @@index([userId])
+  @@index([optionId])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BoardRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum BoardType {
+  SQUARES
+  PROPS
 }

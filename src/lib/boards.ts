@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { randomBytes } from 'crypto';
+import { NextResponse } from 'next/server';
 
 export type BoardAccess = {
   boardId: string;
@@ -15,6 +16,24 @@ export function canEditBoardNow(state: BoardEditState): boolean {
   if (!state.isEditable) return false;
   if (!state.editableUntil) return true;
   return state.editableUntil.getTime() > Date.now();
+}
+
+export async function requireBoardEditable(boardId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const board = await (prisma as any).board.findUnique({
+    where: { id: boardId },
+    select: { isEditable: true, editableUntil: true },
+  });
+
+  if (!board) {
+    return NextResponse.json({ error: 'Board not found' }, { status: 404 });
+  }
+
+  if (!canEditBoardNow({ isEditable: board.isEditable, editableUntil: board.editableUntil })) {
+    return NextResponse.json({ error: 'Board is not editable' }, { status: 409 });
+  }
+
+  return null;
 }
 
 export async function getBoardAccess(userId: string, boardId: string): Promise<BoardAccess | null> {

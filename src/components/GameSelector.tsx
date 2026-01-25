@@ -11,7 +11,10 @@ type GameOption = {
   href: string;
 };
 
-const GAME_OPTIONS: GameOption[] = [{ id: 'super-bowl-squares', name: 'Super Bowl Squares', href: '/squares' }];
+const GAME_OPTIONS: GameOption[] = [
+  { id: 'super-bowl-squares', name: 'Super Bowl Squares', href: '/squares' },
+  { id: 'super-bowl-props', name: 'Super Bowl Props', href: '/props' },
+];
 
 function getInitialSelectedGame(): string {
   if (typeof window === 'undefined') return GAME_OPTIONS[0]?.id ?? '';
