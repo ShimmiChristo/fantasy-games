@@ -13,7 +13,7 @@ if (!databaseUrl) {
 }
 
 const pool = new Pool({ connectionString: databaseUrl });
-const adapter = new PrismaNeon(pool);
+const adapter = new PrismaNeon(pool as any);
 
 export const prisma =
   globalForPrisma.prisma ??
