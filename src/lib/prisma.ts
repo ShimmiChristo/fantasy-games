@@ -8,6 +8,13 @@ const globalForPrisma = globalThis as unknown as {
 
 const databaseUrl = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL;
 
+console.log('[Prisma] Environment check:', {
+  hasPOSTGRES_PRISMA_URL: !!process.env.POSTGRES_PRISMA_URL,
+  hasDATABASE_URL: !!process.env.DATABASE_URL,
+  databaseUrlPrefix: databaseUrl?.substring(0, 30),
+  nodeEnv: process.env.NODE_ENV,
+});
+
 if (!databaseUrl) {
   throw new Error('DATABASE_URL or POSTGRES_PRISMA_URL must be set');
 }
