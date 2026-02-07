@@ -14,7 +14,9 @@
     "build:start": "npm run build && npm run start"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "@prisma/adapter-better-sqlite3": "^7.2.0",
+    "@prisma/adapter-neon": "^7.3.0",
     "@prisma/client": "^7.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "bcryptjs": "^2.4.3",

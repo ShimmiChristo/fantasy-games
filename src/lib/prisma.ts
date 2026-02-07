@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaNeon } from '@prisma/adapter-neon';
+import { Pool } from '@neondatabase/serverless';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -6,18 +8,17 @@ const globalForPrisma = globalThis as unknown as {
 
 const databaseUrl = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL;
 
-// Validate database URL in production
-if (process.env.NODE_ENV === 'production' && !databaseUrl) {
-  throw new Error('DATABASE_URL or POSTGRES_PRISMA_URL must be set in production');
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL or POSTGRES_PRISMA_URL must be set');
 }
 
-if (process.env.NODE_ENV !== 'production' && databaseUrl) {
-  console.log('[prisma] Using database URL:', databaseUrl.substring(0, 30) + '...');
-}
+const pool = new Pool({ connectionString: databaseUrl });
+const adapter = new PrismaNeon(pool);
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
