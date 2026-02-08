@@ -1,19 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
+import { neon } from '@neondatabase/serverless';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Vercel's Neon integration provides POSTGRES_PRISMA_URL.
-const databaseUrl = process.env.POSTGRES_PRISMA_URL;
+const databaseUrl = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL;
 
 if (!databaseUrl) {
-  throw new Error('POSTGRES_PRISMA_URL must be set. Check Vercel environment variables.');
+  throw new Error('DATABASE_URL or POSTGRES_PRISMA_URL must be set');
 }
 
-// Pass the connection string directly to the adapter.
-const adapter = new PrismaNeon(databaseUrl);
+const sql = neon(databaseUrl);
+const adapter = new PrismaNeon(sql as any);
 
 export const prisma =
   globalForPrisma.prisma ??
